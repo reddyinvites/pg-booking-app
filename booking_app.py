@@ -25,18 +25,21 @@ SHEET_ID = "1GbSoVjomgzl52VD8KB2fK1wmQIIYxUlkI4ADgnYYvxw"
 room_sheet = client.open_by_key(SHEET_ID).worksheet("Sheet1")
 booking_sheet = client.open_by_key(SHEET_ID).worksheet("Bookings")
 
-# -------- SESSION STATE --------
-if "name" not in st.session_state:
-    st.session_state["name"] = ""
-
-if "phone" not in st.session_state:
-    st.session_state["phone"] = ""
+# -------- SESSION --------
+if "clear_form" not in st.session_state:
+    st.session_state["clear_form"] = False
 
 # -------- USER INPUT --------
 st.subheader("👤 Your Details")
 
-user_name = st.text_input("Your Name", key="name")
-phone = st.text_input("Phone Number", key="phone")
+default_name = "" if st.session_state["clear_form"] else st.session_state.get("name", "")
+default_phone = "" if st.session_state["clear_form"] else st.session_state.get("phone", "")
+
+user_name = st.text_input("Your Name", value=default_name, key="name")
+phone = st.text_input("Phone Number", value=default_phone, key="phone")
+
+# reset flag
+st.session_state["clear_form"] = False
 
 # -------- LOAD DATA --------
 data = room_sheet.get_all_records()
@@ -46,7 +49,7 @@ if df.empty:
     st.warning("No rooms available")
     st.stop()
 
-# -------- CLEAN DATA --------
+# -------- CLEAN --------
 df = df[
     (df["room_no"].astype(str).str.strip() != "") &
     (df["sharing"].notna()) &
@@ -94,9 +97,9 @@ else:
 
         if beds > 0:
 
-            if st.button(f"Book Room {room_no}", key=f"{i}"):
+            if st.button(f"Book Room {room_no}", key=f"book_{i}"):
 
-                # -------- VALIDATION --------
+                # VALIDATION
                 if user_name.strip() == "" or phone.strip() == "":
                     st.error("⚠️ Enter name & phone")
                     st.stop()
@@ -106,7 +109,7 @@ else:
                     st.stop()
 
                 try:
-                    # -------- LATEST DATA --------
+                    # LATEST DATA
                     latest_data = room_sheet.get_all_records()
                     latest_df = pd.DataFrame(latest_data)
 
@@ -120,10 +123,10 @@ else:
                     new_beds = current_beds - 1
                     row_index = i + 2
 
-                    # -------- UPDATE BEDS --------
+                    # UPDATE BEDS
                     room_sheet.update(f"E{row_index}", [[new_beds]])
 
-                    # -------- SAVE HISTORY --------
+                    # SAVE BOOKING
                     booking_sheet.append_row([
                         user_name,
                         phone,
@@ -133,12 +136,10 @@ else:
                         datetime.now().strftime("%Y-%m-%d %H:%M")
                     ])
 
-                    # -------- SUCCESS --------
                     st.success("✅ Booking Confirmed 🎉")
 
-                    # CLEAR INPUTS
-                    st.session_state["name"] = ""
-                    st.session_state["phone"] = ""
+                    # CLEAR FORM
+                    st.session_state["clear_form"] = True
 
                     st.rerun()
 
@@ -155,6 +156,54 @@ history = booking_sheet.get_all_records()
 history_df = pd.DataFrame(history)
 
 if not history_df.empty:
-    st.dataframe(history_df, use_container_width=True)
+
+    for i, row in history_df.iterrows():
+
+        st.markdown(f"""
+        👤 {row['user_name']}  
+        📞 {row['phone']}  
+        🏠 {row['pg_name']}  
+        🏢 Room: {row['room_no']}  
+        👥 Sharing: {row['sharing']}  
+        🕒 {row['booked_at']}
+        """)
+
+        # -------- CANCEL --------
+        if st.button(f"❌ Cancel Booking {i}", key=f"cancel_{i}"):
+
+            try:
+                # FIND ROOM
+                room_data = room_sheet.get_all_records()
+                room_df = pd.DataFrame(room_data)
+
+                for idx, r in room_df.iterrows():
+
+                    if (
+                        str(r["pg_name"]) == str(row["pg_name"]) and
+                        str(r["room_no"]) == str(row["room_no"])
+                    ):
+
+                        current_beds = int(r["available_beds"])
+                        new_beds = current_beds + 1
+
+                        sheet_row = idx + 2
+
+                        # INCREASE BEDS
+                        room_sheet.update(f"E{sheet_row}", [[new_beds]])
+
+                        break
+
+                # DELETE BOOKING
+                booking_sheet.delete_rows(i + 2)
+
+                st.success("✅ Booking Cancelled")
+
+                st.rerun()
+
+            except Exception as e:
+                st.error(f"❌ Error: {e}")
+
+        st.divider()
+
 else:
     st.info("No bookings yet")
