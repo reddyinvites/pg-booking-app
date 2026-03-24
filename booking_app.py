@@ -4,15 +4,11 @@ from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
 from datetime import datetime
 import urllib.parse
-from streamlit_autorefresh import st_autorefresh
 
 st.set_page_config(page_title="PG Booking", layout="centered")
 
 st.title("🏠 PG Booking")
-
-# -------- SAFE AUTO REFRESH --------
-st.caption("🔄 Auto refreshing every 15 seconds...")
-st_autorefresh(interval=15000, key="auto_refresh")
+st.caption("⚡ Fast mode: Click refresh to update data")
 
 # -------- GOOGLE SHEETS --------
 scope = [
@@ -28,26 +24,24 @@ client = gspread.authorize(creds)
 
 SHEET_ID = "1GbSoVjomgzl52VD8KB2fK1wmQIIYxUlkI4ADgnYYvxw"
 
-# 🔍 TEST CONNECTION (ADD HERE)
-try:
-    sheet = client.open_by_key(SHEET_ID)
-    st.write("✅ Connected:", sheet.title)
-except Exception as e:
-    st.error(f"❌ ERROR: {e}")
-    st.stop()
-
 room_sheet = client.open_by_key(SHEET_ID).worksheet("Sheet1")
 booking_sheet = client.open_by_key(SHEET_ID).worksheet("Bookings")
 owner_sheet = client.open_by_key(SHEET_ID).worksheet("Owners")
 
-# -------- CACHE DATA (IMPORTANT FIX) --------
-@st.cache_data(ttl=10)
+# -------- CACHE --------
+@st.cache_data(ttl=60)
 def load_data():
     room = room_sheet.get_all_records()
     booking = booking_sheet.get_all_records()
     owner = owner_sheet.get_all_records()
     return room, booking, owner
 
+# -------- REFRESH BUTTON --------
+if st.button("🔄 Refresh Data"):
+    st.cache_data.clear()
+    st.rerun()
+
+# -------- LOAD DATA --------
 room_data, booking_data, owner_data = load_data()
 
 df = pd.DataFrame(room_data)
@@ -153,6 +147,7 @@ for i, row in filtered.iterrows():
 
                 st.link_button("📲 WhatsApp Owner", wa_link)
 
+                st.cache_data.clear()
                 st.rerun()
 
         else:
@@ -164,7 +159,7 @@ for i, row in filtered.iterrows():
 # -------- BOOKING HISTORY --------
 st.subheader("📜 Booking History")
 
-history_df = pd.DataFrame(booking_data)  
+history_df = pd.DataFrame(booking_data)
 
 if not history_df.empty:
 
@@ -202,6 +197,8 @@ if not history_df.empty:
                 booking_sheet.delete_rows(i + 2)
 
                 st.success("Cancelled")
+
+                st.cache_data.clear()
                 st.rerun()
 
         # -------- WHATSAPP --------
