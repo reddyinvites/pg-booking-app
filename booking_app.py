@@ -101,7 +101,9 @@ if sharing_filter != "All" and not filtered.empty:
     filtered = filtered[filtered["sharing"] == sharing_filter]
 
 # -------- WHATSAPP FUNCTION --------
-def send_whatsapp_link(user_name, phone, pg, room_no):
+
+def send_whatsapp_link(user_name, phone, pg, room_no, owner_phone):
+
     message = f"""New PG Booking
 
 Name: {user_name}
@@ -110,9 +112,8 @@ PG: {pg}
 Room: {room_no}"""
 
     encoded = urllib.parse.quote(message)
-    owner_number = "919618557269"  # ✅ your number
 
-    return f"https://api.whatsapp.com/send?phone={owner_number}&text={encoded}"
+    return f"https://api.whatsapp.com/send?phone={owner_phone}&text={encoded}"
 
 # -------- ROOMS --------
 st.subheader("🛏 Available Rooms")
