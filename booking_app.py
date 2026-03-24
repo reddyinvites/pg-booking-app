@@ -25,7 +25,7 @@ if "show_whatsapp" not in st.session_state:
 if "wa_link" not in st.session_state:
     st.session_state.wa_link = ""
 
-# ✅ NOW SAFE TO USE
+# -------- WHATSAPP BUTTON --------
 if st.session_state.show_whatsapp:
     st.success("📲 Click below to notify owner")
 
@@ -56,22 +56,22 @@ client = gspread.authorize(creds)
 
 SHEET_ID = "1GbSoVjomgzl52VD8KB2fK1wmQIIYxUlkI4ADgnYYvxw"
 
-room_sheet = client.open_by_key(SHEET_ID).worksheet("Sheet1")
+# ✅ CORRECT SHEET NAMES
+room_sheet = client.open_by_key(SHEET_ID).worksheet("pg_data")
 booking_sheet = client.open_by_key(SHEET_ID).worksheet("Bookings")
 
-# -------- WHATSAPP DISPLAY --------
-if st.session_state.show_whatsapp:
-    st.success("📲 Click below to notify owner")
+# -------- LOAD DATA --------
+try:
+    room_data = room_sheet.get_all_records()
+    df = pd.DataFrame(room_data)
+except:
+    df = pd.DataFrame()
 
-    st.markdown(f"""
-    <a href="{st.session_state.wa_link}" target="_blank">
-        <button style="background-color:green;color:white;padding:10px;border:none;border-radius:5px;">
-            Send WhatsApp to Owner
-        </button>
-    </a>
-    """, unsafe_allow_html=True)
-
-    st.session_state.show_whatsapp = False
+try:
+    booking_data = booking_sheet.get_all_records()
+    booking_df = pd.DataFrame(booking_data) if booking_data else pd.DataFrame()
+except:
+    booking_df = pd.DataFrame()
 
 # -------- USER INPUT --------
 st.subheader("👤 Your Details")
@@ -79,21 +79,7 @@ st.subheader("👤 Your Details")
 user_name = st.text_input("Your Name", key="name")
 phone = st.text_input("Phone Number", key="phone")
 
-# -------- LOAD ROOM DATA --------
-try:
-    room_data = room_sheet.get_all_records()
-    df = pd.DataFrame(room_data)
-except:
-    df = pd.DataFrame()
-
-# -------- LOAD BOOKING DATA --------
-try:
-    booking_data = booking_sheet.get_all_records()
-    booking_df = pd.DataFrame(booking_data) if booking_data else pd.DataFrame()
-except:
-    booking_df = pd.DataFrame()
-
-# -------- FIND USER BOOKING --------
+# -------- CHECK USER BOOKING --------
 user_booking = None
 
 if not booking_df.empty and phone:
@@ -119,17 +105,17 @@ if sharing_filter != "All" and not filtered.empty:
 
 # -------- WHATSAPP FUNCTION --------
 def send_whatsapp_link(user_name, phone, pg, room_no):
-    message = f"""
-New PG Booking
+    message = f"""New PG Booking
 
 Name: {user_name}
 Phone: {phone}
 PG: {pg}
-Room: {room_no}
-"""
+Room: {room_no}"""
+
     encoded = urllib.parse.quote(message)
-    owner_number = "919618557269"  # 👉 replace
-    return f"https://wa.me/{owner_number}?text={encoded}"
+    owner_number = "919618557269"  # ✅ your number
+
+    return f"https://api.whatsapp.com/send?phone={owner_number}&text={encoded}"
 
 # -------- ROOMS --------
 st.subheader("🛏 Available Rooms")
@@ -176,7 +162,7 @@ else:
                         current_beds = int(latest_row["available_beds"])
 
                         if current_beds <= 0:
-                            st.error("❌ Room just got filled")
+                            st.error("❌ Room just filled")
                             st.stop()
 
                         new_beds = current_beds - 1
@@ -195,7 +181,7 @@ else:
 
                         st.success("✅ Booking Confirmed 🎉")
 
-                        # ✅ WHATSAPP FIX
+                        # ✅ WhatsApp trigger
                         st.session_state.wa_link = send_whatsapp_link(user_name, phone, pg, room_no)
                         st.session_state.show_whatsapp = True
                         st.session_state.clear_form = True
