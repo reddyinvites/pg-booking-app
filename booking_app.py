@@ -240,8 +240,7 @@ Room: {row['room_no']}
                     wa_link = f"https://wa.me/{owner_phone}?text={encoded}"
                     st.link_button("📲 WhatsApp", wa_link)
                 else:
-                    st.button("📲 WhatsApp", disabled=True)
-
+                    st.button("📲 WhatsApp", disabled=True, key=f"wa_disabled_{i}")
             else:
                 st.button("📲 WhatsApp", disabled=True)
 
