@@ -28,6 +28,14 @@ client = gspread.authorize(creds)
 
 SHEET_ID = "1GbSoVjomgzl52VD8KB2fK1wmQIIYxUlkI4ADgnYYvxw"
 
+# 🔍 TEST CONNECTION (ADD HERE)
+try:
+    sheet = client.open_by_key(SHEET_ID)
+    st.write("✅ Connected:", sheet.title)
+except Exception as e:
+    st.error(f"❌ ERROR: {e}")
+    st.stop()
+
 room_sheet = client.open_by_key(SHEET_ID).worksheet("Sheet1")
 booking_sheet = client.open_by_key(SHEET_ID).worksheet("Bookings")
 owner_sheet = client.open_by_key(SHEET_ID).worksheet("Owners")
