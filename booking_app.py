@@ -25,13 +25,21 @@ SHEET_ID = "1GbSoVjomgzl52VD8KB2fK1wmQIIYxUlkI4ADgnYYvxw"
 room_sheet = client.open_by_key(SHEET_ID).worksheet("Sheet1")
 booking_sheet = client.open_by_key(SHEET_ID).worksheet("Bookings")
 
-# -------- USER FORM --------
+# -------- SESSION --------
+if "user_name" not in st.session_state:
+    st.session_state.user_name = ""
+
+if "phone" not in st.session_state:
+    st.session_state.phone = ""
+
+# -------- INPUT --------
 st.subheader("👤 Your Details")
 
-with st.form("user_form"):
-    user_name = st.text_input("Your Name")
-    phone = st.text_input("Phone Number")
-    form_submitted = st.form_submit_button("Save Details")
+st.session_state.user_name = st.text_input("Your Name", value=st.session_state.user_name)
+st.session_state.phone = st.text_input("Phone Number", value=st.session_state.phone)
+
+user_name = st.session_state.user_name
+phone = st.session_state.phone
 
 # -------- LOAD DATA --------
 data = room_sheet.get_all_records()
@@ -93,7 +101,7 @@ else:
 
                 # VALIDATION
                 if user_name.strip() == "" or phone.strip() == "":
-                    st.error("⚠️ Enter name & phone first")
+                    st.error("⚠️ Enter name & phone")
                     st.stop()
 
                 if not phone.isdigit() or len(phone) != 10:
@@ -129,6 +137,10 @@ else:
 
                     st.success("✅ Booking Confirmed 🎉")
 
+                    # CLEAR INPUT
+                    st.session_state.user_name = ""
+                    st.session_state.phone = ""
+
                     st.rerun()
 
                 except Exception as e:
@@ -159,23 +171,34 @@ if not history_df.empty:
         if st.button(f"❌ Cancel Booking {i}", key=f"cancel_{i}"):
 
             try:
+                # reload latest bookings
+                latest_history = booking_sheet.get_all_records()
+                latest_df = pd.DataFrame(latest_history)
+
+                if i >= len(latest_df):
+                    st.warning("Already deleted")
+                    st.stop()
+
+                row_data = latest_df.iloc[i]
+
+                # FIND ROOM
                 room_data = room_sheet.get_all_records()
                 room_df = pd.DataFrame(room_data)
 
                 for idx, r in room_df.iterrows():
 
                     if (
-                        str(r["pg_name"]) == str(row["pg_name"]) and
-                        str(r["room_no"]) == str(row["room_no"])
+                        str(r["pg_name"]) == str(row_data["pg_name"]) and
+                        str(r["room_no"]) == str(row_data["room_no"])
                     ):
 
                         current_beds = int(r["available_beds"])
                         new_beds = current_beds + 1
 
-                        sheet_row = idx + 2
-                        room_sheet.update(f"E{sheet_row}", [[new_beds]])
+                        room_sheet.update(f"E{idx+2}", [[new_beds]])
                         break
 
+                # DELETE BOOKING
                 booking_sheet.delete_rows(i + 2)
 
                 st.success("✅ Booking Cancelled")
