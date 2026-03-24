@@ -9,6 +9,17 @@ st.set_page_config(page_title="PG Booking", layout="centered")
 
 st.title("🏠 PG Booking")
 
+# 👇 WHATSAPP BUTTON HERE
+if st.session_state.show_whatsapp:
+    st.success("📲 Click below to notify owner")
+
+    st.link_button(
+        "📲 Send WhatsApp to Owner",
+        st.session_state.wa_link
+    )
+
+    st.session_state.show_whatsapp = False
+
 # -------- SESSION --------
 if "name" not in st.session_state:
     st.session_state.name = ""
@@ -117,7 +128,7 @@ PG: {pg}
 Room: {room_no}
 """
     encoded = urllib.parse.quote(message)
-    owner_number = "91XXXXXXXXXX"  # 👉 replace
+    owner_number = "919618557269"  # 👉 replace
     return f"https://wa.me/{owner_number}?text={encoded}"
 
 # -------- ROOMS --------
