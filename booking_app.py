@@ -187,7 +187,7 @@ if not history_df.empty:
         with col1:
             if st.button("❌ Cancel", key=f"cancel_{i}"):
 
-                room_df = pd.DataFrame(room_sheet.get_all_records())
+                room_df = pd.DataFrame(room_data)
 
                 match = room_df[
                     (room_df["pg_name"] == row["pg_name"]) &
