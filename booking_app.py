@@ -8,24 +8,6 @@ st.set_page_config(page_title="PG Booking", layout="centered")
 
 st.title("🏠 PG Booking")
 
-# -------- SESSION FLAGS --------
-if "booking_success" not in st.session_state:
-    st.session_state.booking_success = False
-
-if "cancelled_ids" not in st.session_state:
-    st.session_state.cancelled_ids = []
-
-if "user_name" not in st.session_state:
-    st.session_state.user_name = ""
-
-if "phone" not in st.session_state:
-    st.session_state.phone = ""
-
-# -------- SUCCESS MESSAGE --------
-if st.session_state.booking_success:
-    st.success("✅ Booking Confirmed 🎉")
-    st.session_state.booking_success = False
-
 # -------- GOOGLE SHEETS --------
 scope = [
     "https://spreadsheets.google.com/feeds",
@@ -46,11 +28,8 @@ booking_sheet = client.open_by_key(SHEET_ID).worksheet("Bookings")
 # -------- INPUT --------
 st.subheader("👤 Your Details")
 
-st.session_state.user_name = st.text_input("Your Name", value=st.session_state.user_name)
-st.session_state.phone = st.text_input("Phone Number", value=st.session_state.phone)
-
-user_name = st.session_state.user_name
-phone = st.session_state.phone
+user_name = st.text_input("Your Name")
+phone = st.text_input("Phone Number")
 
 # -------- LOAD DATA --------
 data = room_sheet.get_all_records()
@@ -80,6 +59,16 @@ filtered = df[df["pg_name"] == selected_pg]
 if sharing_filter != "All":
     filtered = filtered[filtered["sharing"] == sharing_filter]
 
+# -------- CHECK USER BOOKING --------
+existing = booking_sheet.get_all_records()
+existing_df = pd.DataFrame(existing)
+
+user_has_booking = False
+
+if not existing_df.empty and phone:
+    if phone in existing_df["phone"].astype(str).values:
+        user_has_booking = True
+
 # -------- ROOMS --------
 st.subheader("🛏 Available Rooms")
 
@@ -108,65 +97,54 @@ else:
 
         if beds > 0:
 
-            if st.button(f"Book Room {room_no}", key=f"book_{i}"):
+            if user_has_booking:
+                st.warning("⚠️ You already booked. Cancel to rebook.")
 
-                # -------- VALIDATION --------
-                if user_name.strip() == "" or phone.strip() == "":
-                    st.error("⚠️ Enter name & phone")
-                    st.stop()
+            else:
+                if st.button(f"Book Room {room_no}", key=f"book_{i}"):
 
-                if not phone.isdigit() or len(phone) != 10:
-                    st.error("⚠️ Invalid phone number")
-                    st.stop()
-
-                try:
-                    # -------- BOOKING LIMIT --------
-                    existing = booking_sheet.get_all_records()
-                    existing_df = pd.DataFrame(existing)
-
-                    if not existing_df.empty:
-                        if phone in existing_df["phone"].astype(str).values:
-                            st.error("❌ You already booked a room. Cancel first.")
-                            st.stop()
-
-                    # -------- LATEST DATA --------
-                    latest_data = room_sheet.get_all_records()
-                    latest_df = pd.DataFrame(latest_data)
-
-                    latest_row = latest_df.iloc[i]
-                    current_beds = int(latest_row["available_beds"])
-
-                    if current_beds <= 0:
-                        st.error("❌ Already Full")
+                    # VALIDATION
+                    if user_name.strip() == "" or phone.strip() == "":
+                        st.error("⚠️ Enter name & phone")
                         st.stop()
 
-                    new_beds = current_beds - 1
-                    row_index = i + 2
+                    if not phone.isdigit() or len(phone) != 10:
+                        st.error("⚠️ Invalid phone number")
+                        st.stop()
 
-                    # UPDATE BEDS
-                    room_sheet.update(f"E{row_index}", [[new_beds]])
+                    try:
+                        latest_data = room_sheet.get_all_records()
+                        latest_df = pd.DataFrame(latest_data)
 
-                    # SAVE BOOKING
-                    booking_sheet.append_row([
-                        user_name,
-                        phone,
-                        pg,
-                        room_no,
-                        sharing,
-                        datetime.now().strftime("%Y-%m-%d %H:%M")
-                    ])
+                        latest_row = latest_df.iloc[i]
+                        current_beds = int(latest_row["available_beds"])
 
-                    # SUCCESS FLAG
-                    st.session_state.booking_success = True
+                        if current_beds <= 0:
+                            st.error("❌ Already Full")
+                            st.stop()
 
-                    # CLEAR INPUT
-                    st.session_state.user_name = ""
-                    st.session_state.phone = ""
+                        new_beds = current_beds - 1
+                        row_index = i + 2
 
-                    st.rerun()
+                        # UPDATE BEDS
+                        room_sheet.update(f"E{row_index}", [[new_beds]])
 
-                except Exception as e:
-                    st.error(f"❌ Error: {e}")
+                        # SAVE BOOKING
+                        booking_sheet.append_row([
+                            user_name,
+                            phone,
+                            pg,
+                            room_no,
+                            sharing,
+                            datetime.now().strftime("%Y-%m-%d %H:%M")
+                        ])
+
+                        st.success("✅ Booking Confirmed 🎉")
+
+                        st.rerun()
+
+                    except Exception as e:
+                        st.error(f"❌ Error: {e}")
 
         else:
             st.error("❌ Full")
@@ -190,50 +168,35 @@ if not history_df.empty:
         🕒 {row['booked_at']}
         """)
 
-        if i in st.session_state.cancelled_ids:
-            st.warning("⚠️ Already Cancelled")
+        if st.button(f"❌ Cancel Booking {i}", key=f"cancel_{i}"):
 
-        else:
-            if st.button(f"❌ Cancel Booking {i}", key=f"cancel_{i}"):
+            try:
+                row_data = history_df.iloc[i]
 
-                try:
-                    latest_history = booking_sheet.get_all_records()
-                    latest_df = pd.DataFrame(latest_history)
+                # INCREASE BED
+                room_data = room_sheet.get_all_records()
+                room_df = pd.DataFrame(room_data)
 
-                    if i >= len(latest_df):
-                        st.warning("Already deleted")
-                        st.stop()
+                for idx, r in room_df.iterrows():
 
-                    row_data = latest_df.iloc[i]
+                    if (
+                        str(r["pg_name"]) == str(row_data["pg_name"]) and
+                        str(r["room_no"]) == str(row_data["room_no"])
+                    ):
 
-                    # FIND ROOM
-                    room_data = room_sheet.get_all_records()
-                    room_df = pd.DataFrame(room_data)
+                        current_beds = int(r["available_beds"])
+                        room_sheet.update(f"E{idx+2}", [[current_beds + 1]])
+                        break
 
-                    for idx, r in room_df.iterrows():
+                # DELETE BOOKING
+                booking_sheet.delete_rows(i + 2)
 
-                        if (
-                            str(r["pg_name"]) == str(row_data["pg_name"]) and
-                            str(r["room_no"]) == str(row_data["room_no"])
-                        ):
+                st.success("✅ Booking Cancelled")
 
-                            current_beds = int(r["available_beds"])
-                            new_beds = current_beds + 1
+                st.rerun()
 
-                            room_sheet.update(f"E{idx+2}", [[new_beds]])
-                            break
-
-                    # DELETE BOOKING
-                    booking_sheet.delete_rows(i + 2)
-
-                    # MARK CANCELLED
-                    st.session_state.cancelled_ids.append(i)
-
-                    st.success("✅ Booking Cancelled")
-                    st.rerun()
-
-                except Exception as e:
-                    st.error(f"❌ Error: {e}")
+            except Exception as e:
+                st.error(f"❌ Error: {e}")
 
         st.divider()
 
