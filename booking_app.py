@@ -9,6 +9,19 @@ st.set_page_config(page_title="PG Booking", layout="centered")
 
 st.title("🏠 PG Booking")
 
+import time
+
+st.caption("🔄 Auto refreshing every 5 seconds...")
+
+# -------- AUTO REFRESH --------
+if "last_refresh" not in st.session_state:
+    st.session_state.last_refresh = time.time()
+
+# refresh every 5 seconds
+if time.time() - st.session_state.last_refresh > 5:
+    st.session_state.last_refresh = time.time()
+    st.rerun()
+
 # -------- SESSION --------
 if "name" not in st.session_state:
     st.session_state.name = ""
