@@ -161,6 +161,10 @@ else:
 # -------- HISTORY --------
 st.subheader("📜 Booking History")
 
+# session track
+if "cancelled_ids" not in st.session_state:
+    st.session_state.cancelled_ids = []
+
 history = booking_sheet.get_all_records()
 history_df = pd.DataFrame(history)
 
@@ -177,41 +181,53 @@ if not history_df.empty:
         🕒 {row['booked_at']}
         """)
 
-        if st.button(f"❌ Cancel Booking {i}", key=f"cancel_{i}"):
+        # -------- CANCEL BUTTON FIX --------
+        if i in st.session_state.cancelled_ids:
+            st.warning("⚠️ Already Cancelled")
 
-            try:
-                latest_history = booking_sheet.get_all_records()
-                latest_df = pd.DataFrame(latest_history)
+        else:
+            if st.button(f"❌ Cancel Booking {i}", key=f"cancel_{i}"):
 
-                if i >= len(latest_df):
-                    st.warning("Already deleted")
-                    st.stop()
+                try:
+                    # reload latest bookings
+                    latest_history = booking_sheet.get_all_records()
+                    latest_df = pd.DataFrame(latest_history)
 
-                row_data = latest_df.iloc[i]
+                    if i >= len(latest_df):
+                        st.warning("Already deleted")
+                        st.stop()
 
-                room_data = room_sheet.get_all_records()
-                room_df = pd.DataFrame(room_data)
+                    row_data = latest_df.iloc[i]
 
-                for idx, r in room_df.iterrows():
+                    # FIND ROOM
+                    room_data = room_sheet.get_all_records()
+                    room_df = pd.DataFrame(room_data)
 
-                    if (
-                        str(r["pg_name"]) == str(row_data["pg_name"]) and
-                        str(r["room_no"]) == str(row_data["room_no"])
-                    ):
+                    for idx, r in room_df.iterrows():
 
-                        current_beds = int(r["available_beds"])
-                        new_beds = current_beds + 1
+                        if (
+                            str(r["pg_name"]) == str(row_data["pg_name"]) and
+                            str(r["room_no"]) == str(row_data["room_no"])
+                        ):
 
-                        room_sheet.update(f"E{idx+2}", [[new_beds]])
-                        break
+                            current_beds = int(r["available_beds"])
+                            new_beds = current_beds + 1
 
-                booking_sheet.delete_rows(i + 2)
+                            room_sheet.update(f"E{idx+2}", [[new_beds]])
+                            break
 
-                st.success("✅ Booking Cancelled")
-                st.rerun()
+                    # DELETE BOOKING
+                    booking_sheet.delete_rows(i + 2)
 
-            except Exception as e:
-                st.error(f"❌ Error: {e}")
+                    # mark cancelled
+                    st.session_state.cancelled_ids.append(i)
+
+                    st.success("✅ Booking Cancelled")
+
+                    st.rerun()
+
+                except Exception as e:
+                    st.error(f"❌ Error: {e}")
 
         st.divider()
 
