@@ -156,7 +156,7 @@ for i, row in filtered.iterrows():
 # -------- BOOKING HISTORY --------
 st.subheader("📜 Booking History")
 
-history_df = pd.DataFrame(booking_data)  ✅
+history_df = pd.DataFrame(booking_data)  
 
 if not history_df.empty:
 
