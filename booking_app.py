@@ -59,6 +59,10 @@ filtered = df[df["pg_name"] == selected_pg]
 if sharing_filter != "All":
     filtered = filtered[filtered["sharing"] == sharing_filter]
 
+# -------- LOAD BOOKING DATA --------
+existing_data = booking_sheet.get_all_records()
+existing_df = pd.DataFrame(existing_data)
+
 # -------- FIND USER BOOKING --------
 user_booking = None
 
