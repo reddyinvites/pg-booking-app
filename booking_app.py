@@ -59,16 +59,120 @@ filtered = df[df["pg_name"] == selected_pg]
 if sharing_filter != "All":
     filtered = filtered[filtered["sharing"] == sharing_filter]
 
-# -------- CHECK USER BOOKING --------
-existing = booking_sheet.get_all_records()
-existing_df = pd.DataFrame(existing)
-
-user_has_booking = False
+# -------- FIND USER BOOKING --------
+user_booking = None
 
 if not existing_df.empty and phone:
-    if phone in existing_df["phone"].astype(str).values:
-        user_has_booking = True
+    user_rows = existing_df[existing_df["phone"].astype(str) == phone]
+    
+    if not user_rows.empty:
+        user_booking = user_rows.iloc[0]
 
+# -------- SHOW WARNING ONLY ONCE --------
+if user_booking is not None:
+    st.warning("⚠️ You already booked. Cancel to rebook.")
+
+# -------- ROOMS --------
+st.subheader("🛏 Available Rooms")
+
+if filtered.empty:
+    st.info("No rooms available")
+
+else:
+    for i, row in filtered.iterrows():
+
+        room_no = str(row["room_no"]).strip()
+        sharing = int(row["sharing"])
+        floor = int(row["floor"])
+        beds = int(row["available_beds"])
+        pg = row["pg_name"]
+
+        if room_no == "":
+            continue
+
+        # -------- CHECK USER ROOM --------
+        is_my_room = False
+
+        if user_booking is not None:
+            if (
+                str(user_booking["pg_name"]) == str(pg) and
+                str(user_booking["room_no"]) == str(room_no)
+            ):
+                is_my_room = True
+
+        # -------- UI --------
+        if is_my_room:
+            st.success(f"""
+⭐ YOUR BOOKING
+
+🏠 {pg}  
+🏢 Room: {room_no}  
+👥 Sharing: {sharing}  
+🛏 Available Beds: {beds}  
+🏢 Floor: {floor}
+""")
+        else:
+            st.markdown(f"""
+### 🏠 {pg}
+🏢 Room: {room_no}  
+👥 Sharing: {sharing}  
+🛏 Available Beds: {beds}  
+🏢 Floor: {floor}
+""")
+
+        # -------- BUTTON LOGIC --------
+        if beds > 0:
+
+            if user_booking is None:
+                if st.button(f"Book Room {room_no}", key=f"book_{i}"):
+
+                    if user_name.strip() == "" or phone.strip() == "":
+                        st.error("⚠️ Enter name & phone")
+                        st.stop()
+
+                    if not phone.isdigit() or len(phone) != 10:
+                        st.error("⚠️ Invalid phone number")
+                        st.stop()
+
+                    try:
+                        latest_data = room_sheet.get_all_records()
+                        latest_df = pd.DataFrame(latest_data)
+
+                        latest_row = latest_df.iloc[i]
+                        current_beds = int(latest_row["available_beds"])
+
+                        if current_beds <= 0:
+                            st.error("❌ Already Full")
+                            st.stop()
+
+                        new_beds = current_beds - 1
+                        row_index = i + 2
+
+                        room_sheet.update(f"E{row_index}", [[new_beds]])
+
+                        booking_sheet.append_row([
+                            user_name,
+                            phone,
+                            pg,
+                            room_no,
+                            sharing,
+                            datetime.now().strftime("%Y-%m-%d %H:%M")
+                        ])
+
+                        st.success("✅ Booking Confirmed 🎉")
+                        st.rerun()
+
+                    except Exception as e:
+                        st.error(f"❌ Error: {e}")
+
+            else:
+                if is_my_room:
+                    st.info("✅ Already booked by you")
+                else:
+                    st.write("🚫 Booking disabled")
+
+        else:
+            st.error("❌ Full")
 
 # -------- ROOMS --------
 st.subheader("🛏 Available Rooms")
