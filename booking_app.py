@@ -193,6 +193,9 @@ history_df = pd.DataFrame(history)
 
 if not history_df.empty:
 
+    # 👉 latest booking index
+    latest_index = history_df.index[-1]
+
     for i, row in history_df.iterrows():
 
         st.markdown(f"""
@@ -206,9 +209,11 @@ if not history_df.empty:
 
         col1, col2 = st.columns(2)
 
+        # ======================
         # ❌ CANCEL BUTTON
+        # ======================
         with col1:
-            if st.button(f"❌ Cancel", key=f"cancel_{i}"):
+            if st.button("❌ Cancel", key=f"cancel_{i}"):
 
                 try:
                     room_data = room_sheet.get_all_records()
@@ -227,6 +232,7 @@ if not history_df.empty:
 
                         room_sheet.update(f"E{sheet_row}", [[new_beds]])
 
+                    # delete booking row
                     booking_sheet.delete_rows(i + 2)
 
                     st.success("✅ Booking Cancelled")
@@ -235,9 +241,15 @@ if not history_df.empty:
                 except Exception as e:
                     st.error(f"❌ Error: {e}")
 
+        # ======================
         # 📲 WHATSAPP BUTTON
+        # ======================
         with col2:
-            message = f"""
+
+            if i == latest_index:
+                import urllib.parse
+
+                message = f"""
 New Booking Alert!
 
 Name: {row['user_name']}
@@ -247,14 +259,16 @@ Room: {row['room_no']}
 Sharing: {row['sharing']}
 """
 
-            import urllib.parse
-            encoded = urllib.parse.quote(message)
+                encoded = urllib.parse.quote(message)
 
-            owner_number = "919618557269"  # 👈 replace with your number
+                owner_number = "919618557269"  # 👈 your number
 
-            wa_link = f"https://wa.me/{owner_number}?text={encoded}"
+                wa_link = f"https://wa.me/{owner_number}?text={encoded}"
 
-            st.link_button("📲 WhatsApp", wa_link)
+                st.link_button("📲 WhatsApp", wa_link)
+
+            else:
+                st.button("📲 WhatsApp", disabled=True)
 
         st.divider()
 
