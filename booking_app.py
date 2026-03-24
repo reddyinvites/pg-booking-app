@@ -25,21 +25,23 @@ SHEET_ID = "1GbSoVjomgzl52VD8KB2fK1wmQIIYxUlkI4ADgnYYvxw"
 room_sheet = client.open_by_key(SHEET_ID).worksheet("Sheet1")
 booking_sheet = client.open_by_key(SHEET_ID).worksheet("Bookings")
 
+# -------- SESSION --------
+if "name" not in st.session_state:
+    st.session_state.name = ""
+
+if "phone" not in st.session_state:
+    st.session_state.phone = ""
+
 # -------- USER INPUT --------
 st.subheader("👤 Your Details")
 
-user_name = st.text_input("Your Name")
-phone = st.text_input("Phone Number")
+user_name = st.text_input("Your Name", key="name")
+phone = st.text_input("Phone Number", key="phone")
 
-# -------- LOAD ROOM DATA --------
+# -------- LOAD DATA --------
 room_data = room_sheet.get_all_records()
 df = pd.DataFrame(room_data)
 
-if df.empty:
-    st.warning("No rooms available")
-    st.stop()
-
-# -------- LOAD BOOKING DATA --------
 booking_data = booking_sheet.get_all_records()
 booking_df = pd.DataFrame(booking_data)
 
@@ -48,11 +50,10 @@ user_booking = None
 
 if not booking_df.empty and phone:
     user_rows = booking_df[booking_df["phone"].astype(str) == phone]
-    
     if not user_rows.empty:
         user_booking = user_rows.iloc[0]
 
-# -------- SHOW WARNING ONCE --------
+# -------- WARNING --------
 if user_booking is not None:
     st.warning("⚠️ You already booked. Cancel to rebook.")
 
@@ -80,7 +81,6 @@ for i, row in filtered.iterrows():
     beds = int(row["available_beds"])
     pg = row["pg_name"]
 
-    # check if this is user's room
     is_my_room = False
     if user_booking is not None:
         if (
@@ -89,7 +89,6 @@ for i, row in filtered.iterrows():
         ):
             is_my_room = True
 
-    # -------- UI --------
     if is_my_room:
         st.success(f"""
 ⭐ YOUR BOOKING
@@ -109,7 +108,7 @@ for i, row in filtered.iterrows():
 🏢 Floor: {floor}
 """)
 
-    # -------- BOOK BUTTON --------
+    # -------- BOOK --------
     if beds > 0:
 
         if user_booking is None:
@@ -139,6 +138,11 @@ for i, row in filtered.iterrows():
                 ])
 
                 st.success("✅ Booking Confirmed 🎉")
+
+                # clear inputs
+                st.session_state.name = ""
+                st.session_state.phone = ""
+
                 st.rerun()
 
         else:
@@ -151,6 +155,7 @@ for i, row in filtered.iterrows():
         st.error("❌ Full")
 
 # -------- HISTORY --------
+st.markdown("---")
 st.subheader("📜 Booking History")
 
 if not booking_df.empty:
@@ -166,11 +171,10 @@ if not booking_df.empty:
 🕒 {row['booked_at']}
 """)
 
-        # disable cancel if not current user
-        if phone == str(row["phone"]):
+        # ✅ CANCEL FOR ALL USERS
+        if st.button(f"❌ Cancel Booking {i}", key=f"cancel_{i}"):
 
-            if st.button(f"❌ Cancel Booking {i}", key=f"cancel_{i}"):
-
+            try:
                 # increase bed
                 for idx, r in df.iterrows():
 
@@ -186,11 +190,12 @@ if not booking_df.empty:
                 # delete booking
                 booking_sheet.delete_rows(i + 2)
 
-                st.success("Booking Cancelled")
+                st.success("✅ Booking Cancelled")
+
                 st.rerun()
 
-        else:
-            st.info("🔒 Not your booking")
+            except Exception as e:
+                st.error(f"❌ Error: {e}")
 
         st.divider()
 
