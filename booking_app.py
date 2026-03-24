@@ -69,6 +69,7 @@ if not existing_df.empty and phone:
     if phone in existing_df["phone"].astype(str).values:
         user_has_booking = True
 
+
 # -------- ROOMS --------
 st.subheader("🛏 Available Rooms")
 
