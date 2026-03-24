@@ -8,7 +8,7 @@ import urllib.parse
 st.set_page_config(page_title="PG Booking", layout="centered")
 
 st.title("🏠 PG Booking")
-st.caption("⚡ Fast mode: Click refresh to update data")
+st.caption("⚡ Fast mode (No API limits)")
 
 # -------- GOOGLE SHEETS --------
 scope = [
@@ -28,25 +28,36 @@ room_sheet = client.open_by_key(SHEET_ID).worksheet("Sheet1")
 booking_sheet = client.open_by_key(SHEET_ID).worksheet("Bookings")
 owner_sheet = client.open_by_key(SHEET_ID).worksheet("Owners")
 
-# -------- CACHE --------
-@st.cache_data(ttl=60)
-def load_data():
-    room = room_sheet.get_all_records()
-    booking = booking_sheet.get_all_records()
-    owner = owner_sheet.get_all_records()
-    return room, booking, owner
+# -------- SESSION CACHE (MAIN FIX) --------
+if "data_loaded" not in st.session_state:
 
-# -------- REFRESH BUTTON --------
-if st.button("🔄 Refresh Data"):
-    st.cache_data.clear()
-    st.rerun()
+    try:
+        room_data = room_sheet.get_all_records()
+        booking_data = booking_sheet.get_all_records()
+        owner_data = owner_sheet.get_all_records()
 
-# -------- LOAD DATA --------
-room_data, booking_data, owner_data = load_data()
+        st.session_state.room_data = room_data
+        st.session_state.booking_data = booking_data
+        st.session_state.owner_data = owner_data
+
+        st.session_state.data_loaded = True
+
+    except Exception as e:
+        st.error("❌ API limit reached. Wait 1 minute and refresh.")
+        st.stop()
+
+room_data = st.session_state.room_data
+booking_data = st.session_state.booking_data
+owner_data = st.session_state.owner_data
 
 df = pd.DataFrame(room_data)
 booking_df = pd.DataFrame(booking_data)
 owner_df = pd.DataFrame(owner_data)
+
+# -------- REFRESH BUTTON --------
+if st.button("🔄 Refresh Data"):
+    st.session_state.data_loaded = False
+    st.rerun()
 
 # -------- USER INPUT --------
 st.subheader("👤 Your Details")
@@ -116,7 +127,6 @@ for i, row in filtered.iterrows():
                     st.error("Enter name & phone")
                     st.stop()
 
-                # -------- OWNER PHONE --------
                 owner_row = owner_df[owner_df["pg_name"] == pg]
 
                 if owner_row.empty:
@@ -125,11 +135,9 @@ for i, row in filtered.iterrows():
 
                 owner_phone = str(owner_row.iloc[0]["phone"])
 
-                # -------- UPDATE BEDS --------
                 new_beds = beds - 1
                 room_sheet.update(f"E{i+2}", [[new_beds]])
 
-                # -------- SAVE BOOKING --------
                 booking_sheet.append_row([
                     user_name,
                     phone,
@@ -147,7 +155,7 @@ for i, row in filtered.iterrows():
 
                 st.link_button("📲 WhatsApp Owner", wa_link)
 
-                st.cache_data.clear()
+                st.session_state.data_loaded = False
                 st.rerun()
 
         else:
@@ -198,7 +206,7 @@ if not history_df.empty:
 
                 st.success("Cancelled")
 
-                st.cache_data.clear()
+                st.session_state.data_loaded = False
                 st.rerun()
 
         # -------- WHATSAPP --------
