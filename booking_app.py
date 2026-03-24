@@ -3,8 +3,13 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
 from datetime import datetime
+from streamlit_autorefresh import st_autorefresh
+import time
 
 st.set_page_config(page_title="PG Booking", layout="centered")
+
+# 🔄 AUTO REFRESH (5 sec)
+st_autorefresh(interval=5000, key="refresh")
 
 st.title("🏠 PG Booking")
 
@@ -25,7 +30,7 @@ SHEET_ID = "1GbSoVjomgzl52VD8KB2fK1wmQIIYxUlkI4ADgnYYvxw"
 room_sheet = client.open_by_key(SHEET_ID).worksheet("Sheet1")
 booking_sheet = client.open_by_key(SHEET_ID).worksheet("Bookings")
 
-# -------- SESSION INIT --------
+# -------- SESSION --------
 if "name" not in st.session_state:
     st.session_state.name = ""
 
@@ -35,7 +40,7 @@ if "phone" not in st.session_state:
 if "clear_form" not in st.session_state:
     st.session_state.clear_form = False
 
-# -------- RESET FORM SAFELY --------
+# ✅ SAFE RESET
 if st.session_state.clear_form:
     st.session_state.name = ""
     st.session_state.phone = ""
@@ -98,6 +103,7 @@ for i, row in filtered.iterrows():
         ):
             is_my_room = True
 
+    # UI
     if is_my_room:
         st.success(f"""
 ⭐ YOUR BOOKING
@@ -117,7 +123,7 @@ for i, row in filtered.iterrows():
 🏢 Floor: {floor}
 """)
 
-    # -------- BOOK --------
+    # -------- BOOKING --------
     if beds > 0:
 
         if user_booking is None:
@@ -132,7 +138,10 @@ for i, row in filtered.iterrows():
                     st.stop()
 
                 try:
-                    # latest fetch
+                    # ⏳ simulate lock
+                    time.sleep(1)
+
+                    # 🔄 latest data
                     latest_data = room_sheet.get_all_records()
                     latest_df = pd.DataFrame(latest_data)
 
@@ -140,7 +149,7 @@ for i, row in filtered.iterrows():
                     current_beds = int(latest_row["available_beds"])
 
                     if current_beds <= 0:
-                        st.error("❌ Already Full")
+                        st.error("❌ Room just got filled. Try another.")
                         st.stop()
 
                     new_beds = current_beds - 1
@@ -159,7 +168,7 @@ for i, row in filtered.iterrows():
 
                     st.success("✅ Booking Confirmed 🎉")
 
-                    # SAFE RESET
+                    # clear form safely
                     st.session_state.clear_form = True
                     st.rerun()
 
@@ -192,7 +201,7 @@ if not booking_df.empty:
 🕒 {row['booked_at']}
 """)
 
-        # CANCEL FOR ALL
+        # ✅ CANCEL FOR ALL USERS
         if st.button(f"❌ Cancel Booking {i}", key=f"cancel_{i}"):
 
             try:
@@ -210,7 +219,6 @@ if not booking_df.empty:
                 booking_sheet.delete_rows(i + 2)
 
                 st.success("✅ Booking Cancelled")
-
                 st.rerun()
 
             except Exception as e:
