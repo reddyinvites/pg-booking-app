@@ -11,8 +11,6 @@ st.title("🏠 PG Booking")
 
 import time
 
-st.caption("🔄 Auto refreshing every 5 seconds...")
-
 from streamlit_autorefresh import st_autorefresh
 
 st.caption("🔄 Auto refreshing every 5 seconds...")
