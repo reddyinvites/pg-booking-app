@@ -25,17 +25,6 @@ if "show_whatsapp" not in st.session_state:
 if "wa_link" not in st.session_state:
     st.session_state.wa_link = ""
 
-# -------- WHATSAPP BUTTON --------
-if st.session_state.show_whatsapp:
-    st.success("📲 Click below to notify owner")
-
-    st.link_button(
-        "📲 Send WhatsApp to Owner",
-        st.session_state.wa_link
-    )
-
-    st.session_state.show_whatsapp = False
-
 # -------- RESET FORM --------
 if st.session_state.clear_form:
     st.session_state.name = ""
