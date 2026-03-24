@@ -4,38 +4,15 @@ from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
 from datetime import datetime
 import urllib.parse
+from streamlit_autorefresh import st_autorefresh
 
 st.set_page_config(page_title="PG Booking", layout="centered")
 
 st.title("🏠 PG Booking")
 
-import time
-from streamlit_autorefresh import st_autorefresh
-
-st.caption("🔄 Auto refreshing every 5 seconds...")
-st_autorefresh(interval=5000, key="auto_refresh")
-
-# -------- SESSION --------
-if "name" not in st.session_state:
-    st.session_state.name = ""
-
-if "phone" not in st.session_state:
-    st.session_state.phone = ""
-
-if "clear_form" not in st.session_state:
-    st.session_state.clear_form = False
-
-if "show_whatsapp" not in st.session_state:
-    st.session_state.show_whatsapp = False
-
-if "wa_link" not in st.session_state:
-    st.session_state.wa_link = ""
-
-# -------- RESET FORM --------
-if st.session_state.clear_form:
-    st.session_state.name = ""
-    st.session_state.phone = ""
-    st.session_state.clear_form = False
+# -------- SAFE AUTO REFRESH --------
+st.caption("🔄 Auto refreshing every 15 seconds...")
+st_autorefresh(interval=15000, key="auto_refresh")
 
 # -------- GOOGLE SHEETS --------
 scope = [
@@ -53,22 +30,29 @@ SHEET_ID = "1GbSoVjomgzl52VD8KB2fK1wmQIIYxUlkI4ADgnYYvxw"
 
 room_sheet = client.open_by_key(SHEET_ID).worksheet("Sheet1")
 booking_sheet = client.open_by_key(SHEET_ID).worksheet("Bookings")
-
-# ✅ NEW: Owners sheet
 owner_sheet = client.open_by_key(SHEET_ID).worksheet("Owners")
-owner_df = pd.DataFrame(owner_sheet.get_all_records())
 
-# -------- LOAD DATA --------
-df = pd.DataFrame(room_sheet.get_all_records())
-booking_df = pd.DataFrame(booking_sheet.get_all_records())
+# -------- CACHE DATA (IMPORTANT FIX) --------
+@st.cache_data(ttl=10)
+def load_data():
+    room = room_sheet.get_all_records()
+    booking = booking_sheet.get_all_records()
+    owner = owner_sheet.get_all_records()
+    return room, booking, owner
+
+room_data, booking_data, owner_data = load_data()
+
+df = pd.DataFrame(room_data)
+booking_df = pd.DataFrame(booking_data)
+owner_df = pd.DataFrame(owner_data)
 
 # -------- USER INPUT --------
 st.subheader("👤 Your Details")
 
-user_name = st.text_input("Your Name", key="name")
-phone = st.text_input("Phone Number", key="phone")
+user_name = st.text_input("Your Name")
+phone = st.text_input("Phone Number")
 
-# -------- CHECK USER BOOKING --------
+# -------- CHECK EXISTING BOOKING --------
 user_booking = None
 
 if not booking_df.empty and phone:
@@ -85,12 +69,7 @@ st.subheader("🔍 Filter")
 pg_list = df["pg_name"].dropna().unique()
 selected_pg = st.selectbox("Select PG", pg_list)
 
-sharing_filter = st.selectbox("Sharing", ["All", 1, 2, 3, 4, 5, 6])
-
 filtered = df[df["pg_name"] == selected_pg]
-
-if sharing_filter != "All":
-    filtered = filtered[filtered["sharing"] == sharing_filter]
 
 # -------- WHATSAPP FUNCTION --------
 def send_whatsapp_link(user_name, phone, pg, room_no, owner_phone):
@@ -104,7 +83,7 @@ Room: {room_no}"""
 
     encoded = urllib.parse.quote(message)
 
-    return f"https://api.whatsapp.com/send?phone={owner_phone}&text={encoded}"
+    return f"https://wa.me/{owner_phone}?text={encoded}"
 
 # -------- ROOMS --------
 st.subheader("🛏 Available Rooms")
@@ -135,7 +114,7 @@ for i, row in filtered.iterrows():
                     st.error("Enter name & phone")
                     st.stop()
 
-                # -------- GET OWNER PHONE --------
+                # -------- OWNER PHONE --------
                 owner_row = owner_df[owner_df["pg_name"] == pg]
 
                 if owner_row.empty:
@@ -144,7 +123,7 @@ for i, row in filtered.iterrows():
 
                 owner_phone = str(owner_row.iloc[0]["phone"])
 
-                # -------- UPDATE BED --------
+                # -------- UPDATE BEDS --------
                 new_beds = beds - 1
                 room_sheet.update(f"E{i+2}", [[new_beds]])
 
@@ -160,12 +139,11 @@ for i, row in filtered.iterrows():
 
                 st.success("✅ Booking Confirmed")
 
-                # -------- WHATSAPP --------
-                st.session_state.wa_link = send_whatsapp_link(
+                wa_link = send_whatsapp_link(
                     user_name, phone, pg, room_no, owner_phone
                 )
-                st.session_state.show_whatsapp = True
-                st.session_state.clear_form = True
+
+                st.link_button("📲 WhatsApp Owner", wa_link)
 
                 st.rerun()
 
@@ -223,7 +201,12 @@ if not history_df.empty:
 
             if i == latest_index:
 
-                message = f"""New Booking
+                owner_row = owner_df[owner_df["pg_name"] == row["pg_name"]]
+
+                if not owner_row.empty:
+                    owner_phone = str(owner_row.iloc[0]["phone"])
+
+                    message = f"""New Booking
 
 Name: {row['user_name']}
 Phone: {row['phone']}
@@ -231,18 +214,17 @@ PG: {row['pg_name']}
 Room: {row['room_no']}
 """
 
-                encoded = urllib.parse.quote(message)
+                    encoded = urllib.parse.quote(message)
 
-                owner_row = owner_df[owner_df["pg_name"] == row["pg_name"]]
-
-                if not owner_row.empty:
-                    owner_phone = str(owner_row.iloc[0]["phone"])
                     wa_link = f"https://wa.me/{owner_phone}?text={encoded}"
+
                     st.link_button("📲 WhatsApp", wa_link)
+
                 else:
                     st.button("📲 WhatsApp", disabled=True, key=f"wa_disabled_{i}")
+
             else:
-                st.button("📲 WhatsApp", disabled=True)
+                st.button("📲 WhatsApp", disabled=True, key=f"wa_disabled_{i}")
 
         st.divider()
 
