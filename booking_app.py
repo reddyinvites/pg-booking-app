@@ -57,7 +57,7 @@ client = gspread.authorize(creds)
 SHEET_ID = "1GbSoVjomgzl52VD8KB2fK1wmQIIYxUlkI4ADgnYYvxw"
 
 # ✅ CORRECT SHEET NAMES
-room_sheet = client.open_by_key(SHEET_ID).worksheet("pg_data")
+room_sheet = client.open_by_key(SHEET_ID).worksheet("Sheet1")
 booking_sheet = client.open_by_key(SHEET_ID).worksheet("Bookings")
 
 # -------- LOAD DATA --------
