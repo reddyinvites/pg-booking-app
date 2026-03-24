@@ -8,6 +8,10 @@ st.set_page_config(page_title="PG Booking", layout="centered")
 
 st.title("🏠 PG Booking")
 
+# -------- SUCCESS FLAG --------
+if "booking_success" not in st.session_state:
+    st.session_state.booking_success = False
+
 # -------- GOOGLE SHEETS --------
 scope = [
     "https://spreadsheets.google.com/feeds",
@@ -31,6 +35,11 @@ if "user_name" not in st.session_state:
 
 if "phone" not in st.session_state:
     st.session_state.phone = ""
+
+# -------- SHOW SUCCESS --------
+if st.session_state.booking_success:
+    st.success("✅ Booking Confirmed 🎉")
+    st.session_state.booking_success = False
 
 # -------- INPUT --------
 st.subheader("👤 Your Details")
@@ -99,7 +108,6 @@ else:
 
             if st.button(f"Book Room {room_no}", key=f"book_{i}"):
 
-                # VALIDATION
                 if user_name.strip() == "" or phone.strip() == "":
                     st.error("⚠️ Enter name & phone")
                     st.stop()
@@ -135,9 +143,10 @@ else:
                         datetime.now().strftime("%Y-%m-%d %H:%M")
                     ])
 
-                    st.success("✅ Booking Confirmed 🎉")
+                    # SUCCESS FLAG
+                    st.session_state.booking_success = True
 
-                    # CLEAR INPUT
+                    # CLEAR INPUTS
                     st.session_state.user_name = ""
                     st.session_state.phone = ""
 
@@ -171,7 +180,6 @@ if not history_df.empty:
         if st.button(f"❌ Cancel Booking {i}", key=f"cancel_{i}"):
 
             try:
-                # reload latest bookings
                 latest_history = booking_sheet.get_all_records()
                 latest_df = pd.DataFrame(latest_history)
 
@@ -181,7 +189,6 @@ if not history_df.empty:
 
                 row_data = latest_df.iloc[i]
 
-                # FIND ROOM
                 room_data = room_sheet.get_all_records()
                 room_df = pd.DataFrame(room_data)
 
@@ -198,7 +205,6 @@ if not history_df.empty:
                         room_sheet.update(f"E{idx+2}", [[new_beds]])
                         break
 
-                # DELETE BOOKING
                 booking_sheet.delete_rows(i + 2)
 
                 st.success("✅ Booking Cancelled")
