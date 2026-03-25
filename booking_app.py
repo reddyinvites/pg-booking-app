@@ -5,75 +5,58 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 
 st.set_page_config(page_title="PG Booking", layout="centered")
+
 st.title("🏠 PG Booking")
 
-# ================= GOOGLE SHEETS (SAFE + FAST) =================
+# -------- GOOGLE SHEETS --------
+scope = [
+    "https://spreadsheets.google.com/feeds",
+    "https://www.googleapis.com/auth/drive"
+]
 
-@st.cache_resource
-def connect():
-    scope = [
-        "https://spreadsheets.google.com/feeds",
-        "https://www.googleapis.com/auth/drive"
-    ]
+creds = ServiceAccountCredentials.from_json_keyfile_dict(
+    st.secrets["gcp"], scope
+)
 
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(
-        st.secrets["gcp"], scope
-    )
+client = gspread.authorize(creds)
 
-    return gspread.authorize(creds)
+SHEET_ID = "1GbSoVjomgzl52VD8KB2fK1wmQIIYxUlkI4ADgnYYvxw"
 
+room_sheet = client.open_by_key(SHEET_ID).worksheet("Sheet1")
+booking_sheet = client.open_by_key(SHEET_ID).worksheet("Bookings")
 
-@st.cache_data(ttl=10)
-def load_data():
-    try:
-        client = connect()
+# -------- LOAD DATA --------
+room_df = pd.DataFrame(room_sheet.get_all_records())
+booking_df = pd.DataFrame(booking_sheet.get_all_records())
 
-        SHEET_ID = "1GbSoVjomgzl52VD8KB2fK1wmQIIYxUlkI4ADgnYYvxw"
-
-        room_sheet = client.open_by_key(SHEET_ID).worksheet("Sheet1")
-        booking_sheet = client.open_by_key(SHEET_ID).worksheet("Bookings")
-
-        room_df = pd.DataFrame(room_sheet.get_all_records())
-        booking_df = pd.DataFrame(booking_sheet.get_all_records())
-
-        return room_sheet, booking_sheet, room_df, booking_df
-
-    except:
-        st.error("❌ Sheet connection error")
-        st.stop()
-
-
-room_sheet, booking_sheet, room_df, booking_df = load_data()
-
-# ================= USER INPUT =================
-
+# -------- SESSION --------
 if "name" not in st.session_state:
     st.session_state.name = ""
 
 if "phone" not in st.session_state:
     st.session_state.phone = ""
 
+# ================= USER DETAILS =================
 st.subheader("👤 Your Details")
 
 name = st.text_input("Your Name", key="name")
 phone = st.text_input("Phone Number", key="phone")
 
 # ================= FILTER =================
-
 st.subheader("🔍 Filter")
 
 pg_list = room_df["pg_name"].unique() if not room_df.empty else []
+
 selected_pg = st.selectbox("Select PG", pg_list)
 
-# ================= ROOMS =================
-
+# ================= AVAILABLE ROOMS =================
 st.subheader("🛏 Available Rooms")
 
 if not room_df.empty:
 
-    filtered = room_df[room_df["pg_name"] == selected_pg]
+    filtered_df = room_df[room_df["pg_name"] == selected_pg]
 
-    for i, row in filtered.iterrows():
+    for i, row in filtered_df.iterrows():
 
         st.markdown("---")
 
@@ -104,7 +87,6 @@ if not room_df.empty:
                     st.session_state.name = ""
                     st.session_state.phone = ""
 
-                    st.cache_data.clear()
                     st.rerun()
 
                 else:
@@ -114,8 +96,9 @@ if not room_df.empty:
             st.error("❌ Full")
 
 # ================= BOOKING HISTORY =================
-
 st.subheader("📜 Booking History")
+
+booking_df = pd.DataFrame(booking_sheet.get_all_records())
 
 if not booking_df.empty:
 
@@ -125,7 +108,7 @@ if not booking_df.empty:
 
         col1, col2 = st.columns([3,1])
 
-        # LEFT
+        # LEFT SIDE (DETAILS)
         with col1:
             st.write(f"👤 {row['name']}")
             st.write(f"📞 {row['phone']}")
@@ -133,7 +116,7 @@ if not booking_df.empty:
             st.write(f"🛏 Room: {row['room_no']}")
             st.write(f"👥 Sharing: {row['sharing']}")
 
-        # RIGHT (SIDE BY SIDE BUTTONS)
+        # RIGHT SIDE (BUTTONS)
         with col2:
 
             if st.button("📲 WhatsApp", key=f"wa_{i}"):
@@ -146,7 +129,6 @@ if not booking_df.empty:
 
                 st.success("Cancelled")
 
-                st.cache_data.clear()
                 st.rerun()
 
 else:
