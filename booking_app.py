@@ -1,12 +1,28 @@
 import streamlit as st
-import pandas as pd
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+import pandas as pd
 from datetime import datetime
+import urllib.parse
 
 st.set_page_config(page_title="PG Booking", layout="centered")
-
 st.title("🏠 PG Booking")
+
+# -------- SESSION --------
+if "name" not in st.session_state:
+    st.session_state.name = ""
+
+if "phone" not in st.session_state:
+    st.session_state.phone = ""
+
+if "clear_form" not in st.session_state:
+    st.session_state.clear_form = False
+
+# -------- RESET FORM --------
+if st.session_state.clear_form:
+    st.session_state.name = ""
+    st.session_state.phone = ""
+    st.session_state.clear_form = False
 
 # -------- GOOGLE SHEETS --------
 scope = [
@@ -22,114 +38,158 @@ client = gspread.authorize(creds)
 
 SHEET_ID = "1GbSoVjomgzl52VD8KB2fK1wmQIIYxUlkI4ADgnYYvxw"
 
-room_sheet = client.open_by_key(SHEET_ID).worksheet("Sheet1")
-booking_sheet = client.open_by_key(SHEET_ID).worksheet("Bookings")
+sheet = client.open_by_key(SHEET_ID)
+room_sheet = sheet.worksheet("Sheet1")
+booking_sheet = sheet.worksheet("Bookings")
+owner_sheet = sheet.worksheet("Owners")
 
 # -------- LOAD DATA --------
 room_df = pd.DataFrame(room_sheet.get_all_records())
 booking_df = pd.DataFrame(booking_sheet.get_all_records())
+owner_df = pd.DataFrame(owner_sheet.get_all_records())
 
-# -------- SESSION --------
-if "name" not in st.session_state:
-    st.session_state.name = ""
-
-if "phone" not in st.session_state:
-    st.session_state.phone = ""
-
-# ================= USER DETAILS =================
+# -------- USER INPUT --------
 st.subheader("👤 Your Details")
 
-name = st.text_input("Your Name", key="name")
+user_name = st.text_input("Your Name", key="name")
 phone = st.text_input("Phone Number", key="phone")
 
-# ================= FILTER =================
+# -------- FILTER --------
 st.subheader("🔍 Filter")
 
-pg_list = room_df["pg_name"].unique() if not room_df.empty else []
-
+pg_list = room_df["pg_name"].dropna().unique()
 selected_pg = st.selectbox("Select PG", pg_list)
 
-# ================= AVAILABLE ROOMS =================
+filtered = room_df[room_df["pg_name"] == selected_pg]
+
+# -------- ROOMS --------
 st.subheader("🛏 Available Rooms")
 
-if not room_df.empty:
+for i, row in filtered.iterrows():
 
-    filtered_df = room_df[room_df["pg_name"] == selected_pg]
+    room_no = str(row["room_no"])
+    sharing = row["sharing"]
+    beds = int(row["available_beds"])
+    floor = row["floor"]
+    pg = row["pg_name"]
 
-    for i, row in filtered_df.iterrows():
+    st.markdown(f"""
+### 🏠 {pg}
+🏢 Room: {room_no}  
+👥 Sharing: {sharing}  
+🛏 Beds: {beds}  
+🏢 Floor: {floor}
+""")
 
-        st.markdown("---")
+    if beds > 0:
+        if st.button(f"Book Room {room_no}", key=f"book_{pg}_{room_no}"):
 
-        st.write(f"🏠 {row['pg_name']}")
-        st.write(f"🛏 Room: {row['room_no']}")
-        st.write(f"👥 Sharing: {row['sharing']}")
-        st.write(f"🛌 Beds: {row['available_beds']}")
-        st.write(f"🏢 Floor: {row['floor']}")
+            if user_name.strip() == "" or phone.strip() == "":
+                st.error("Enter name & phone")
+                st.stop()
 
-        if int(row["available_beds"]) > 0:
+            match = room_df[
+                (room_df["pg_name"] == pg) &
+                (room_df["room_no"].astype(str) == room_no)
+            ]
 
-            if st.button(f"Book Room {row['room_no']}", key=f"book_{i}"):
+            if not match.empty:
+                idx = match.index[0]
 
-                if name and phone:
+                # update beds
+                room_sheet.update(f"E{idx+2}", [[beds - 1]])
 
-                    booking_sheet.append_row([
-                        name,
-                        phone,
-                        row["pg_name"],
-                        row["room_no"],
-                        row["sharing"],
-                        datetime.now().strftime("%Y-%m-%d %H:%M")
-                    ])
+                # save booking
+                booking_sheet.append_row([
+                    user_name,
+                    phone,
+                    pg,
+                    room_no,
+                    sharing,
+                    datetime.now().strftime("%Y-%m-%d %H:%M")
+                ])
 
-                    st.success("✅ Room Booked")
+                st.success("✅ Booking Confirmed")
 
-                    # CLEAR FORM
-                    st.session_state.name = ""
-                    st.session_state.phone = ""
+                # trigger clear form
+                st.session_state.clear_form = True
 
-                    st.rerun()
+                st.rerun()
+    else:
+        st.error("❌ Full")
 
-                else:
-                    st.error("Enter Name & Phone")
-
-        else:
-            st.error("❌ Full")
-
-# ================= BOOKING HISTORY =================
+# -------- BOOKING HISTORY --------
 st.subheader("📜 Booking History")
 
-booking_df = pd.DataFrame(booking_sheet.get_all_records())
+history = booking_sheet.get_all_records()
+history_df = pd.DataFrame(history)
 
-if not booking_df.empty:
+if not history_df.empty:
 
-    for i, row in booking_df.iterrows():
+    for i, row in history_df.iterrows():
 
-        st.markdown("---")
+        # DETAILS
+        st.markdown(f"""
+👤 {row['user_name']}  
+📞 {row['phone']}  
+🏠 {row['pg_name']}  
+🏢 Room: {row['room_no']}  
+👥 Sharing: {row['sharing']}  
+🕒 {row['booked_at']}
+""")
 
-        col1, col2 = st.columns([3,1])
+        col1, col2 = st.columns(2)
 
-        # LEFT SIDE (DETAILS)
+        # 📲 WHATSAPP
         with col1:
-            st.write(f"👤 {row['name']}")
-            st.write(f"📞 {row['phone']}")
-            st.write(f"🏠 {row['pg_name']}")
-            st.write(f"🛏 Room: {row['room_no']}")
-            st.write(f"👥 Sharing: {row['sharing']}")
 
-        # RIGHT SIDE (BUTTONS)
+            message = f"""
+New Booking
+
+Name: {row['user_name']}
+Phone: {row['phone']}
+PG: {row['pg_name']}
+Room: {row['room_no']}
+Sharing: {row['sharing']}
+"""
+
+            encoded = urllib.parse.quote(message)
+
+            owner_row = owner_df[
+                owner_df["pg_name"].astype(str).str.strip() ==
+                str(row["pg_name"]).strip()
+            ]
+
+            if not owner_row.empty:
+                owner_phone = str(owner_row.iloc[0]["phone"])
+                wa_link = f"https://wa.me/{owner_phone}?text={encoded}"
+                st.link_button("📲 WhatsApp", wa_link)
+            else:
+                st.button("📲 WhatsApp", disabled=True)
+
+        # ❌ CANCEL
         with col2:
+            if st.button("❌ Cancel", key=f"cancel_{i}_{row['room_no']}"):
 
-            if st.button("📲 WhatsApp", key=f"wa_{i}"):
-                wa_url = f"https://wa.me/{row['phone']}"
-                st.markdown(f"[Open WhatsApp]({wa_url})")
+                room_data = room_sheet.get_all_records()
+                room_df2 = pd.DataFrame(room_data)
 
-            if st.button("❌ Cancel", key=f"cancel_{i}"):
+                match = room_df2[
+                    (room_df2["pg_name"].astype(str) == str(row["pg_name"])) &
+                    (room_df2["room_no"].astype(str) == str(row["room_no"]))
+                ]
+
+                if not match.empty:
+                    idx = match.index[0]
+                    beds = int(match.iloc[0]["available_beds"]) + 1
+                    room_sheet.update(f"E{idx+2}", [[beds]])
 
                 booking_sheet.delete_rows(i + 2)
 
                 st.success("Cancelled")
-
                 st.rerun()
+
+        st.divider()
 
 else:
     st.info("No bookings yet")
