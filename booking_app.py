@@ -7,7 +7,7 @@ from datetime import datetime
 st.set_page_config(page_title="PG Booking", layout="centered")
 st.title("🏠 PG Booking")
 
-# ================= GOOGLE SHEETS =================
+# ================= GOOGLE SHEETS (SAFE + FAST) =================
 
 @st.cache_resource
 def connect():
@@ -36,10 +36,6 @@ def load_data():
         room_df = pd.DataFrame(room_sheet.get_all_records())
         booking_df = pd.DataFrame(booking_sheet.get_all_records())
 
-        # 🔥 FIX COLUMN ISSUES
-        room_df.columns = room_df.columns.str.strip().str.lower()
-        booking_df.columns = booking_df.columns.str.strip().str.lower()
-
         return room_sheet, booking_sheet, room_df, booking_df
 
     except:
@@ -49,15 +45,13 @@ def load_data():
 
 room_sheet, booking_sheet, room_df, booking_df = load_data()
 
-# ================= SESSION =================
+# ================= USER INPUT =================
 
 if "name" not in st.session_state:
     st.session_state.name = ""
 
 if "phone" not in st.session_state:
     st.session_state.phone = ""
-
-# ================= USER DETAILS =================
 
 st.subheader("👤 Your Details")
 
@@ -71,7 +65,7 @@ st.subheader("🔍 Filter")
 pg_list = room_df["pg_name"].unique() if not room_df.empty else []
 selected_pg = st.selectbox("Select PG", pg_list)
 
-# ================= AVAILABLE ROOMS =================
+# ================= ROOMS =================
 
 st.subheader("🛏 Available Rooms")
 
@@ -96,7 +90,7 @@ if not room_df.empty:
                 if name and phone:
 
                     booking_sheet.append_row([
-                        name,   # this goes into user_name column
+                        name,
                         phone,
                         row["pg_name"],
                         row["room_no"],
@@ -131,19 +125,19 @@ if not booking_df.empty:
 
         col1, col2 = st.columns([3,1])
 
-        # LEFT SIDE
+        # LEFT
         with col1:
-            st.write(f"👤 {row.get('user_name','-')}")
-            st.write(f"📞 {row.get('phone','-')}")
-            st.write(f"🏠 {row.get('pg_name','-')}")
-            st.write(f"🛏 Room: {row.get('room_no','-')}")
-            st.write(f"👥 Sharing: {row.get('sharing','-')}")
+            st.write(f"👤 {row['name']}")
+            st.write(f"📞 {row['phone']}")
+            st.write(f"🏠 {row['pg_name']}")
+            st.write(f"🛏 Room: {row['room_no']}")
+            st.write(f"👥 Sharing: {row['sharing']}")
 
-        # RIGHT SIDE BUTTONS
+        # RIGHT (SIDE BY SIDE BUTTONS)
         with col2:
 
             if st.button("📲 WhatsApp", key=f"wa_{i}"):
-                wa_url = f"https://wa.me/{row.get('phone','')}"
+                wa_url = f"https://wa.me/{row['phone']}"
                 st.markdown(f"[Open WhatsApp]({wa_url})")
 
             if st.button("❌ Cancel", key=f"cancel_{i}"):
