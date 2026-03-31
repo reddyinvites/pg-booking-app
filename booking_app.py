@@ -51,16 +51,10 @@ if not room_df.empty:
 
     room_df["parsed"] = room_df["sharing_json"].apply(safe_parse)
 
-    def get_sharing(x):
-        try:
-            return int(str(x.get("type", "0")).split()[0])
-        except:
-            return 0
-
-    room_df["sharing"] = room_df["parsed"].apply(get_sharing)
-    room_df["price"] = room_df["parsed"].apply(lambda x: int(x.get("price", 0)))
-    room_df["available_beds"] = room_df["parsed"].apply(lambda x: int(x.get("available_beds", 0)))
-    room_df["total_beds"] = room_df["parsed"].apply(lambda x: int(x.get("total_beds", 0)))
+    room_df["sharing"] = room_df["parsed"].apply(lambda x: int(str(x.get("type","0")).split()[0]) if x else 0)
+    room_df["price"] = room_df["parsed"].apply(lambda x: int(x.get("price",0)))
+    room_df["available_beds"] = room_df["parsed"].apply(lambda x: int(x.get("available_beds",0)))
+    room_df["total_beds"] = room_df["parsed"].apply(lambda x: int(x.get("total_beds",0)))
 
 # =========================================================
 # 👤 USER DETAILS
@@ -76,13 +70,33 @@ phone = st.text_input("Phone")
 st.subheader("🎯 Your Preferences")
 
 budget = st.number_input("Budget (₹)", value=6000)
-location = st.text_input("Preferred Location")
-sharing_pref = st.selectbox("Sharing", [1, 2, 3, 4])
+location = st.text_input("Location")
 food_required = st.selectbox("Food Required", ["Yes", "No"])
+gender = st.selectbox("Gender", ["Male", "Female"])
+room_type = st.selectbox("Room Type", ["AC", "Non-AC"])
 cleanliness = st.selectbox("Cleanliness", ["Low", "Medium", "High"])
+crowd = st.selectbox("Preferred Crowd", ["Students", "Employees", "Mixed"])
 
 # =========================================================
-# 🧠 ADVANCED MATCH ENGINE
+# 🧠 HARD FILTER
+# =========================================================
+def hard_filter(df):
+    filtered = df.copy()
+
+    if "gender" in filtered.columns:
+        filtered = filtered[
+            filtered["gender"].astype(str).str.lower() == gender.lower()
+        ]
+
+    if food_required == "Yes" and "food" in filtered.columns:
+        filtered = filtered[
+            filtered["food"].astype(str).str.lower() == "yes"
+        ]
+
+    return filtered
+
+# =========================================================
+# 🧠 SCORING ENGINE
 # =========================================================
 def calculate_score(row):
 
@@ -90,110 +104,111 @@ def calculate_score(row):
     reasons = []
     drawbacks = []
 
-    # Budget (30%)
+    # Budget (30)
     if row["price"] <= budget:
         score += 30
-        reasons.append("Within your budget")
+        reasons.append("Perfect budget match")
     else:
         diff = row["price"] - budget
-        penalty = min(30, diff / 100)
-        score += max(0, 30 - penalty)
+        score += max(0, 30 - diff / 100)
         drawbacks.append(f"₹{diff} above budget")
 
-    # Location (25%)
+    # Location (25)
     if location.strip() != "":
-        if location.lower() in str(row.get("location", "")).lower():
+        if location.lower() in str(row.get("location","")).lower():
             score += 25
             reasons.append("Exact location match")
         else:
             score += 10
             drawbacks.append("Different location")
 
-    # Sharing (10%)
-    if row["sharing"] == sharing_pref:
-        score += 10
-        reasons.append("Preferred sharing matched")
-    else:
-        score += 5
-        drawbacks.append("Different sharing type")
+    # Cleanliness (15)
+    clean_map = {"Low":5, "Medium":10, "High":15}
+    score += clean_map.get(cleanliness, 10)
 
-    # Availability (15%)
-    if row["available_beds"] > 0:
-        score += 15
-        reasons.append("Beds available")
-    else:
-        drawbacks.append("Currently full")
-
-    # Cleanliness (10%)
     if cleanliness == "High":
-        score += 10
-        reasons.append("High cleanliness expected")
-    elif cleanliness == "Medium":
-        score += 7
-    else:
-        score += 5
+        reasons.append("High cleanliness preference matched")
 
-    # Food (10%)
+    # Food (10)
     if food_required == "Yes":
-        score += 10
-        reasons.append("Food preference considered")
-    else:
-        score += 5
+        if str(row.get("food","")).lower() == "yes":
+            score += 10
+            reasons.append("Food available")
+        else:
+            drawbacks.append("Food not available")
+
+    # Crowd (10)
+    if "crowd" in row:
+        if str(row["crowd"]).lower() == crowd.lower():
+            score += 10
+            reasons.append("Preferred crowd match")
+        else:
+            score += 5
+            drawbacks.append("Different crowd")
+
+    # Room type (5)
+    if "room_type" in row:
+        if str(row["room_type"]).lower() == room_type.lower():
+            score += 5
+            reasons.append("Room type matched")
 
     return score, reasons, drawbacks
 
 # =========================================================
-# 🔍 FIND MATCHES
+# 🔍 MATCH ENGINE
 # =========================================================
 if st.button("🔍 Find Best PGs"):
 
-    if room_df.empty:
-        st.error("No PG data available")
+    if name.strip()=="" or phone.strip()=="":
+        st.error("Enter name & phone ❌")
         st.stop()
 
-    results = room_df.apply(lambda row: calculate_score(row), axis=1)
+    filtered_df = hard_filter(room_df)
 
-    room_df["score"] = [r[0] for r in results]
-    room_df["reasons"] = [r[1] for r in results]
-    room_df["drawbacks"] = [r[2] for r in results]
+    if filtered_df.empty:
+        st.error("No PGs match your basic preferences ❌")
+        st.stop()
 
-    top = room_df.sort_values(by="score", ascending=False).head(3)
+    results = filtered_df.apply(lambda row: calculate_score(row), axis=1)
 
-    st.subheader("🏆 Top PG Matches For You")
+    filtered_df["score"] = [r[0] for r in results]
+    filtered_df["reasons"] = [r[1] for r in results]
+    filtered_df["drawbacks"] = [r[2] for r in results]
 
-    for i, row in top.iterrows():
+    top3 = filtered_df.sort_values(by="score", ascending=False).head(3)
+
+    st.subheader("🏆 Top Matches For You")
+
+    for i, row in top3.iterrows():
 
         match_percent = min(100, int(row["score"]))
 
-        st.markdown(f"### 🏠 {row.get('pg_name','PG')} — {match_percent}% Match")
+        st.markdown(f"## 🏠 {row.get('pg_name','PG')} — {match_percent}% Match ✅")
 
-        # WHY MATCH
-        st.success("✅ Why this match?")
+        st.markdown("### Why this match?")
         for r in row["reasons"]:
-            st.write(f"✔ {r}")
+            st.write(f"- {r}")
 
-        # DRAWBACKS
+        st.markdown("### Why choose this PG?")
+        st.write("- Good overall balance")
+        st.write("- Matches most of your needs")
+
         if row["drawbacks"]:
-            st.warning("⚠️ Things to consider")
+            st.markdown("### Things to consider:")
             for d in row["drawbacks"]:
-                st.write(f"• {d}")
+                st.write(f"- {d}")
 
-        # DETAILS
         st.markdown(f"""
 💰 Price: ₹{row['price']}  
 📍 Location: {row.get('location','N/A')}  
 👥 Sharing: {row['sharing']}  
-🛏 Beds Available: {row['available_beds']}
+🛏 Beds: {row['available_beds']}
 """)
 
         # BOOK
         if row["available_beds"] > 0:
 
             if st.button(f"Book {row.get('pg_name','PG')}", key=f"book_{i}"):
-
-                if name.strip()=="" or phone.strip()=="":
-                    st.error("Enter name & phone")
-                    st.stop()
 
                 new_beds = row["available_beds"] - 1
 
