@@ -31,36 +31,54 @@ booking_sheet = sheet.worksheet("orders")
 # ---------------- LOAD DATA ----------------
 @st.cache_data(ttl=10)
 def load_data():
-    df = pd.DataFrame(room_sheet.get_all_records())
+    rooms = pd.DataFrame(room_sheet.get_all_records())
     bookings = pd.DataFrame(booking_sheet.get_all_records())
-    return df, bookings
+    return rooms, bookings
 
 room_df, booking_df = load_data()
 
-# ---------------- JSON PARSE ----------------
+# ---------------- SAFE JSON PARSE ----------------
+def safe_parse(val):
+    try:
+        data = json.loads(val)
+        if isinstance(data, list):
+            return data[0]
+        return data
+    except:
+        return {}
+
 if not room_df.empty:
 
-    room_df["parsed"] = room_df["sharing_json"].apply(json.loads)
+    room_df["parsed"] = room_df["sharing_json"].apply(safe_parse)
 
-    room_df["sharing"] = room_df["parsed"].apply(lambda x: int(x["type"].split()[0]))
-    room_df["price"] = room_df["parsed"].apply(lambda x: x["price"])
-    room_df["available_beds"] = room_df["parsed"].apply(lambda x: x["available_beds"])
-    room_df["total_beds"] = room_df["parsed"].apply(lambda x: x["total_beds"])
+    def get_sharing(x):
+        try:
+            return int(str(x.get("type", "0")).split()[0])
+        except:
+            return 0
+
+    room_df["sharing"] = room_df["parsed"].apply(get_sharing)
+    room_df["price"] = room_df["parsed"].apply(lambda x: int(x.get("price", 0)))
+    room_df["available_beds"] = room_df["parsed"].apply(lambda x: int(x.get("available_beds", 0)))
+    room_df["total_beds"] = room_df["parsed"].apply(lambda x: int(x.get("total_beds", 0)))
 
 # =========================================================
-# 👤 USER DETAILS + PREFERENCES
+# 👤 USER DETAILS
 # =========================================================
 st.subheader("👤 Your Details")
 
 name = st.text_input("Name")
 phone = st.text_input("Phone")
 
+# =========================================================
+# 🎯 USER PREFERENCES
+# =========================================================
 st.subheader("🎯 Your Preferences")
 
 budget = st.number_input("Budget (₹)", value=6000)
 location = st.text_input("Preferred Location")
-sharing_pref = st.selectbox("Sharing", [1,2,3,4])
-food_required = st.selectbox("Food", ["Yes", "No"])
+sharing_pref = st.selectbox("Sharing", [1, 2, 3, 4])
+food_required = st.selectbox("Food Required", ["Yes", "No"])
 cleanliness = st.selectbox("Cleanliness", ["Low", "Medium", "High"])
 
 # =========================================================
@@ -77,18 +95,18 @@ def calculate_score(row):
         score += max(0, 30 - diff/100)
 
     # Location (25%)
-    if location.lower() in str(row["location"]).lower():
+    if location.lower() in str(row.get("location", "")).lower():
         score += 25
 
     # Sharing (10%)
     if row["sharing"] == sharing_pref:
         score += 10
 
-    # Beds available (20%)
+    # Beds (20%)
     if row["available_beds"] > 0:
         score += 20
 
-    # Cleanliness dummy (15%)
+    # Cleanliness (15%)
     if cleanliness == "High":
         score += 15
     elif cleanliness == "Medium":
@@ -99,12 +117,12 @@ def calculate_score(row):
     return score
 
 # =========================================================
-# 🔍 SHOW MATCHES
+# 🔍 FIND PGs
 # =========================================================
 if st.button("🔍 Find Best PGs"):
 
     if room_df.empty:
-        st.error("No data")
+        st.error("No PG data available")
         st.stop()
 
     room_df["score"] = room_df.apply(calculate_score, axis=1)
@@ -116,30 +134,28 @@ if st.button("🔍 Find Best PGs"):
     for i, row in top.iterrows():
 
         st.markdown(f"""
-### 🏠 {row['pg_name']} — {int(row['score'])}% Match
+### 🏠 {row.get('pg_name','PG')} — {int(row['score'])}% Match
 
 💰 Price: ₹{row['price']}  
-📍 Location: {row['location']}  
+📍 Location: {row.get('location','N/A')}  
 👥 Sharing: {row['sharing']}  
 🛏 Beds Available: {row['available_beds']}
 """)
 
-        # WHY MATCH
         st.info("Why this match?")
-        st.write("- Budget compatibility")
-        st.write("- Location relevance")
-        st.write("- Available beds")
+        st.write("✔ Budget compatible")
+        st.write("✔ Location relevance")
+        st.write("✔ Beds available")
 
-        # BOOK BUTTON
+        # ---------------- BOOK ----------------
         if row["available_beds"] > 0:
 
-            if st.button(f"Book {row['pg_name']}", key=i):
+            if st.button(f"Book {row.get('pg_name','PG')}", key=i):
 
                 if name.strip()=="" or phone.strip()=="":
-                    st.error("Enter details")
+                    st.error("Enter name & phone")
                     st.stop()
 
-                # Update beds
                 new_beds = row["available_beds"] - 1
 
                 new_json = {
@@ -150,26 +166,26 @@ if st.button("🔍 Find Best PGs"):
                     "available_beds": new_beds
                 }
 
+                # 🔥 UPDATE JSON BACK
                 room_sheet.update(
-                    f"F{i+2}",
-                    [[json.dumps(new_json)]]
+                    f"A{i+2}",
+                    [[json.dumps([new_json])]]
                 )
 
-                # Save booking
                 booking_sheet.append_row([
                     name,
                     phone,
-                    row["pg_name"],
+                    row.get("pg_name","PG"),
                     row["sharing"],
                     datetime.now().strftime("%Y-%m-%d %H:%M")
                 ])
 
-                st.success("✅ Booked")
+                st.success("✅ Booking Confirmed")
                 st.cache_data.clear()
                 st.rerun()
 
         else:
-            st.error("Full ❌")
+            st.error("❌ Full")
 
         st.divider()
 
