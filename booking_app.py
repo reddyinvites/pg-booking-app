@@ -104,7 +104,6 @@ if st.button("🔍 Find Best PGs"):
         else:
             continue
 
-        # SMART TEXT
         diff = budget - price
         if diff >= 0:
             if diff == 0:
@@ -188,13 +187,6 @@ if st.button("🔍 Find Best PGs"):
             "Crowd": crowd_r
         }
 
-        worst = min(pain_dict, key=pain_dict.get)
-
-        if pain_dict[worst] <= 2:
-            pain_msg = f"⚠️ {worst} is poor"
-        else:
-            pain_msg = "✅ Overall good living conditions"
-
         results.append({
             "pg": row["pg_name"],
             "score": int(score),
@@ -203,10 +195,9 @@ if st.button("🔍 Find Best PGs"):
             "pros": pros,
             "cons": cons,
             "pain": pain_avg,
-            "pain_msg": pain_msg
+            "pain_dict": pain_dict
         })
 
-    # ---------------- SORT ----------------
     results = sorted(results, key=lambda x: x["score"], reverse=True)[:3]
 
     # ---------------- HIGHLIGHTS ----------------
@@ -224,12 +215,8 @@ if st.button("🔍 Find Best PGs"):
 
     for r in results:
 
-        st.markdown("""
-        <div style="background:#ffffff;padding:18px;border-radius:15px;
-        margin-bottom:15px;box-shadow:0 2px 10px rgba(0,0,0,0.08);">
-        """, unsafe_allow_html=True)
-
-        st.markdown(f"### 🏠 {r['pg']} — {r['score']}% Match")
+        st.markdown("----")
+        st.markdown(f"## 🏠 {r['pg']} — {r['score']}% Match")
 
         badge = ""
         if r["score"] == top_score:
@@ -242,27 +229,37 @@ if st.button("🔍 Find Best PGs"):
         if badge:
             st.markdown(f"**{badge}**")
 
-        if r["score"] >= 80:
-            st.success("🔥 Highly Recommended")
-        elif r["score"] >= 60:
-            st.info("👍 Good Choice")
-        else:
-            st.warning("⚖️ Consider Carefully")
-
+        # WHY
         st.markdown("### 💡 Why this PG?")
         for i in r["reasons"]:
             st.write("•", i)
 
+        # PROS
         st.markdown("### 👍 Why choose this PG?")
         for i in r["pros"]:
             st.write("✓", i)
 
+        # CONS
         if r["cons"]:
             st.markdown("### ⚠️ Things to consider")
             for i in r["cons"]:
                 st.write("•", i)
 
+        # ---------------- PAIN UI ----------------
         st.markdown(f"### ⭐ Pain Score: {r['pain']} / 5")
-        st.warning(r["pain_msg"])
 
-        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("#### 🔍 Detailed Breakdown")
+        for k, v in r["pain_dict"].items():
+            st.write(f"{k} → ⭐ {round(v,1)} / 5")
+
+        worst = min(r["pain_dict"], key=r["pain_dict"].get)
+        worst_score = r["pain_dict"][worst]
+
+        st.markdown("#### ⚠️ Biggest Pain")
+
+        if worst_score <= 2:
+            st.error(f"⚠️ {worst} is poor")
+        elif worst_score <= 3:
+            st.warning(f"⚠️ {worst} could be better")
+        else:
+            st.success("✅ No major issues — good PG")
