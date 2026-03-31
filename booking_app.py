@@ -5,66 +5,68 @@ from oauth2client.service_account import ServiceAccountCredentials
 import ast
 
 st.set_page_config(page_title="PG Match Engine", layout="centered")
-st.title("🏠 PG Match Engine (Smart AI Matching)")
 
-# ---------------- GOOGLE SHEETS ----------------
+st.title("🏠 PG Match Engine (AI Recommendation)")
+
+# ---------------- GOOGLE SHEET ----------------
 scope = [
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/drive"
 ]
 
 creds = ServiceAccountCredentials.from_json_keyfile_dict(
-    st.secrets["gcp"], scope
+    st.secrets["gcp_service_account"], scope
 )
 
 client = gspread.authorize(creds)
 
-SHEET_ID = "1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q"
+PG_DATA_ID = "1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q"
+sheet = client.open_by_key(PG_DATA_ID)
+ws = sheet.worksheet("Sheet1")
 
-sheet = client.open_by_key(SHEET_ID)
-room_sheet = sheet.worksheet("Sheet1")
-
-# ---------------- LOAD DATA ----------------
-@st.cache_data(ttl=10)
+@st.cache_data(ttl=30)
 def load_data():
-    return pd.DataFrame(room_sheet.get_all_records())
+    return pd.DataFrame(ws.get_all_records())
 
 df = load_data()
 
-# ---------------- PARSE JSON ----------------
-def parse_json(x):
+# ---------------- SAFE PARSE ----------------
+def parse_json_safe(x):
     try:
         return ast.literal_eval(x)[0]
     except:
         return {}
 
-df["parsed"] = df["sharing_json"].apply(parse_json)
+df["parsed"] = df["sharing_json"].apply(parse_json_safe)
 
-df["price"] = df["parsed"].apply(lambda x: int(x.get("price", 0)))
-df["sharing"] = df["parsed"].apply(lambda x: int(x.get("type", "1").split()[0]))
+# ---------------- CLEAN DATA ----------------
+def safe_int(x):
+    try:
+        return int(x)
+    except:
+        return 0
 
-# ---------------- USER DETAILS ----------------
-st.subheader("👤 Your Details")
+df["price"] = df["parsed"].apply(lambda x: safe_int(x.get("price")))
+df["sharing"] = df["parsed"].apply(lambda x: safe_int(x.get("type","0").split()[0]))
 
-name = st.text_input("Name")
-phone = st.text_input("Phone")
-
-# ---------------- PREFERENCES ----------------
+# ---------------- USER INPUT ----------------
 st.subheader("🎯 Your Preferences")
 
-budget = st.number_input("Budget (₹)", min_value=1000, value=6000)
+budget = st.number_input("Budget ₹", 1000, 20000, 6000)
 
 locations = df["location"].dropna().unique().tolist()
 location = st.selectbox("Location", locations)
 
 food = st.selectbox("Food Type", ["Veg", "Non Veg", "Mixed"])
-food_rating = st.slider("Food Quality Expectation ⭐", 1, 10, 5)
 
 crowd = st.selectbox("Preferred Crowd", ["Students", "Employees", "Mixed"])
-room_type = st.selectbox("Room Type", ["AC", "Non-AC"])
-cleanliness = st.slider("Cleanliness Expectation 🧼", 1, 10, 5)
 
-# ---------------- MATCH BUTTON ----------------
+room_type = st.selectbox("Room Type", ["AC", "Non-AC"])
+
+food_exp = st.slider("Food Quality Expectation ⭐", 1, 10, 5)
+clean_exp = st.slider("Cleanliness Expectation ⭐", 1, 10, 5)
+
+# ---------------- BUTTON ----------------
 if st.button("🔍 Find Best PGs"):
 
     results = []
@@ -72,50 +74,55 @@ if st.button("🔍 Find Best PGs"):
     for _, row in df.iterrows():
 
         price = int(row["price"])
-
-        # ---------------- HARD FILTER ----------------
-        if price > budget:
-            continue
+        pg_location = str(row.get("location","")).lower()
+        pg_name = row.get("pg_name","PG")
 
         score = 0
         reasons = []
         pros = []
         cons = []
 
-        # ---------------- BUDGET ----------------
+        # ---------------- HARD FILTER ----------------
+        if price > budget:
+            continue   # ❗ FIXED
+
+        # ---------------- BUDGET LOGIC ----------------
         diff = budget - price
 
         score += 30
 
         if diff == 0:
             reasons.append(f"Perfect budget match (₹{price})")
+
         elif diff <= 1000:
             reasons.append(f"Very close to your budget (₹{price})")
+
         elif diff <= 3000:
-            reasons.append(f"Good deal — ₹{diff} cheaper")
+            reasons.append(f"Good deal — save ₹{diff}")
+
         else:
             reasons.append(f"Great deal — save ₹{diff}")
 
         pros.append("Budget friendly")
 
         # ---------------- LOCATION ----------------
-        if str(row["location"]).lower() == location.lower():
+        if location.lower() in pg_location:
             score += 25
             reasons.append(f"Exact location match ({location})")
         else:
             cons.append("Different location")
 
         # ---------------- FOOD ----------------
-        pg_food = str(row.get("food_type", "")).lower()
+        pg_food = str(row.get("food_type","")).lower()
 
         if food.lower() in pg_food:
             score += 10
-            reasons.append("Food matches preference")
+            reasons.append("Food matches your preference")
         else:
             cons.append("Food mismatch")
 
         # ---------------- CROWD ----------------
-        pg_crowd = str(row.get("crowd", "")).lower()
+        pg_crowd = str(row.get("crowd","")).lower()
 
         if crowd.lower() in pg_crowd:
             score += 10
@@ -123,59 +130,69 @@ if st.button("🔍 Find Best PGs"):
             cons.append("Crowd mismatch")
 
         # ---------------- CLEANLINESS ----------------
-        pg_clean = int(row.get("cleanliness", 5))
+        clean_score = safe_int(row.get("cleanliness",5))
 
-        if pg_clean >= cleanliness:
-            score += 15
-            pros.append("High cleanliness")
+        score += (clean_score / 10) * 15
+
+        if clean_score >= clean_exp:
+            reasons.append("Cleanliness meets expectation")
         else:
-            cons.append("Below expected cleanliness")
+            cons.append("Cleanliness below expectation")
 
-        # ---------------- ROOM TYPE ----------------
-        pg_room = str(row.get("room_type", "")).lower()
+        # ---------------- FOOD RATING ----------------
+        food_score = safe_int(row.get("food_rating",5))
 
-        if room_type.lower() in pg_room:
-            score += 5
+        score += (food_score / 10) * 10
+
+        if food_score >= food_exp:
+            reasons.append("Food quality is good")
         else:
-            cons.append("Room type mismatch")
+            cons.append("Food quality average")
 
+        # ---------------- FINAL SCORE ----------------
+        match = int(score)
+
+        # ---------------- OUTPUT ----------------
         results.append({
-            "name": row["pg_name"],
-            "score": score,
+            "pg": pg_name,
+            "score": match,
             "reasons": reasons,
             "pros": pros,
-            "cons": cons
+            "cons": cons,
+            "price": price
         })
 
     # ---------------- SORT ----------------
     results = sorted(results, key=lambda x: x["score"], reverse=True)[:3]
 
     # ---------------- DISPLAY ----------------
-    st.subheader("🏆 Top Matches For You")
+    if results:
 
-    if not results:
-        st.error("No PGs found ❌")
+        st.subheader("🏆 Top Matches For You")
 
-    for pg in results:
+        for r in results:
 
-        st.markdown(f"## 🏠 {pg['name']} — {pg['score']}% Match")
+            st.markdown(f"## 🏠 {r['pg']} — {r['score']}% Match")
 
-        st.success("👍 Good Choice")
+            # WHY THIS PG
+            st.markdown("### 💡 Why this PG?")
+            for x in r["reasons"]:
+                st.write("•", x)
 
-        # WHY THIS PG
-        st.markdown("### 💡 Why this PG?")
-        for r in pg["reasons"]:
-            st.write(f"• {r}")
+            # WHY CHOOSE
+            st.markdown("### 👍 Why choose this PG?")
+            for x in r["pros"]:
+                st.write("•", x)
 
-        # WHY CHOOSE
-        st.markdown("### 👍 Why choose this PG?")
-        for p in pg["pros"]:
-            st.write(f"• {p}")
-
-        # CONS
-        if pg["cons"]:
+            # CONS
             st.markdown("### ⚠️ Things to consider")
-            for c in pg["cons"]:
-                st.write(f"• {c}")
+            if r["cons"]:
+                for x in r["cons"]:
+                    st.write("•", x)
+            else:
+                st.write("• No major issues")
 
-        st.divider()
+            st.divider()
+
+    else:
+        st.error("❌ No PGs found under your budget")
