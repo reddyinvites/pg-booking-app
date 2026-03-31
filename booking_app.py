@@ -125,7 +125,7 @@ if st.button("🔍 Find Best PGs"):
 
         # ---------------- FOOD ----------------
         pg_food = str(row.get("food_type", "")).lower()
-        food_rating = float(row.get("food_rating", 3))
+        food_rating = min(5, float(row.get("food_rating", 3)))
 
         if food.lower() == pg_food:
             score += 5
@@ -171,11 +171,11 @@ if st.button("🔍 Find Best PGs"):
                 score += 5
 
         # ---------------- PAIN SCORE ----------------
-        food_r = float(row.get("food_rating", 3))
-        clean_r = float(row.get("cleanliness", 5)) / 2
-        noise_r = float(row.get("noise_rating", 3))
-        safety_r = float(row.get("safety_rating", 3))
-        crowd_r = float(row.get("crowd_rating", 3))
+        food_r = min(5, float(row.get("food_rating", 3)))
+        clean_r = min(5, float(row.get("cleanliness", 5)) / 2)
+        noise_r = min(5, float(row.get("noise_rating", 3)))
+        safety_r = min(5, float(row.get("safety_rating", 3)))
+        crowd_r = min(5, float(row.get("crowd_rating", 3)))
 
         pain_avg = round((food_r + clean_r + noise_r + safety_r + crowd_r) / 5, 1)
 
@@ -229,17 +229,14 @@ if st.button("🔍 Find Best PGs"):
         if badge:
             st.markdown(f"**{badge}**")
 
-        # WHY
         st.markdown("### 💡 Why this PG?")
         for i in r["reasons"]:
             st.write("•", i)
 
-        # PROS
         st.markdown("### 👍 Why choose this PG?")
         for i in r["pros"]:
             st.write("✓", i)
 
-        # CONS
         if r["cons"]:
             st.markdown("### ⚠️ Things to consider")
             for i in r["cons"]:
@@ -252,14 +249,28 @@ if st.button("🔍 Find Best PGs"):
         for k, v in r["pain_dict"].items():
             st.write(f"{k} → ⭐ {round(v,1)} / 5")
 
-        worst = min(r["pain_dict"], key=r["pain_dict"].get)
-        worst_score = r["pain_dict"][worst]
-
+        # ---------------- TOP 2 PAINS ----------------
         st.markdown("#### ⚠️ Biggest Pain")
 
-        if worst_score <= 2:
-            st.error(f"⚠️ {worst} is poor")
-        elif worst_score <= 3:
-            st.warning(f"⚠️ {worst} could be better")
-        else:
-            st.success("✅ No major issues — good PG")
+        sorted_pains = sorted(r["pain_dict"].items(), key=lambda x: x[1])
+        top_2_pains = sorted_pains[:2]
+
+        for factor, score_val in top_2_pains:
+
+            if score_val <= 2:
+                st.error(f"⚠️ {factor} is poor")
+
+            elif score_val <= 3:
+                if factor == "Food":
+                    st.warning("⚠️ Food is average")
+                elif factor == "Cleanliness":
+                    st.warning("⚠️ Cleanliness could be better")
+                elif factor == "Noise":
+                    st.warning("⚠️ Slight noise issues (not peaceful)")
+                elif factor == "Safety":
+                    st.warning("⚠️ Area safety is average")
+                elif factor == "Crowd":
+                    st.warning("⚠️ Mixed crowd — may not suit everyone")
+
+            else:
+                st.success(f"✅ {factor} is good")
