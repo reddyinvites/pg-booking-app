@@ -60,7 +60,6 @@ location = st.selectbox("Location", df["location"].dropna().unique())
 
 food = st.selectbox("Food Type", ["Veg", "Non Veg", "Mixed"])
 
-# ✅ FIXED FOOD SLIDER
 food_expect = st.slider("Food Quality Expectation ⭐", 1, 5, 3)
 
 crowd = st.selectbox("Preferred Crowd", ["Students", "Employees", "Mixed"])
@@ -73,6 +72,8 @@ user_history = history_df[history_df["phone"] == phone] if not history_df.empty 
 
 # ---------------- BUTTON ----------------
 if st.button("🔍 Find Best PGs"):
+
+    st.info(f"Showing PGs under your budget ₹{budget}")
 
     # SAVE USER DATA
     if phone:
@@ -96,9 +97,9 @@ if st.button("🔍 Find Best PGs"):
         pros = []
         cons = []
 
-        price = row["price"]
+        price = int(row["price"])
 
-        # ---------------- BUDGET FIX ----------------
+        # ---------------- ORIGINAL BUDGET LOGIC (UNCHANGED) ----------------
         if price <= budget:
             score += 30
             reasons.append(f"Within your budget (₹{budget}). PG price ₹{price}")
@@ -109,6 +110,19 @@ if st.button("🔍 Find Best PGs"):
         else:
             continue
 
+        # ---------------- NEW SMART BUDGET EXPLANATION ----------------
+        diff = budget - price
+
+        if diff >= 0:
+            if diff == 0:
+                reasons.append(f"Perfect match — exactly ₹{price}")
+            elif diff <= 1000:
+                reasons.append(f"Close to your budget — ₹{price}")
+            elif diff <= 3000:
+                reasons.append(f"Good deal — ₹{diff} cheaper than your budget")
+            else:
+                reasons.append(f"Best deal — save ₹{diff}")
+
         # ---------------- LOCATION ----------------
         if str(row["location"]).lower() == location.lower():
             score += 25
@@ -117,7 +131,7 @@ if st.button("🔍 Find Best PGs"):
             score += 10
             cons.append("Different location")
 
-        # ---------------- FOOD (FIXED) ----------------
+        # ---------------- FOOD ----------------
         pg_food = str(row.get("food_type", "")).lower()
 
         food_rating = float(row["food_rating"]) if "food_rating" in df.columns else 3
@@ -193,7 +207,6 @@ if st.button("🔍 Find Best PGs"):
         else:
             pain_msg = "✅ Overall good living conditions"
 
-        # ---------------- RESULT ----------------
         results.append({
             "pg": row["pg_name"],
             "score": int(score),
@@ -206,6 +219,8 @@ if st.button("🔍 Find Best PGs"):
 
     results = sorted(results, key=lambda x: x["score"], reverse=True)[:3]
 
+    st.success(f"Top {len(results)} PGs selected based on your budget ₹{budget}")
+
     # ---------------- OUTPUT ----------------
     st.subheader("🏆 Top Matches For You")
 
@@ -215,6 +230,14 @@ if st.button("🔍 Find Best PGs"):
     for r in results:
 
         st.markdown(f"## 🏠 {r['pg']} — {r['score']}% Match")
+
+        # SMART TAG
+        if r["score"] >= 80:
+            st.success("🔥 Highly Recommended")
+        elif r["score"] >= 60:
+            st.info("👍 Good Choice")
+        else:
+            st.warning("⚖️ Consider Carefully")
 
         st.markdown("### 💡 Why this PG?")
         for i in r["reasons"]:
