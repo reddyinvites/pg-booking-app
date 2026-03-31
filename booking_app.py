@@ -5,8 +5,8 @@ from oauth2client.service_account import ServiceAccountCredentials
 import json
 from datetime import datetime
 
-st.set_page_config(page_title="PG Match Engine AI", layout="centered")
-st.title("🏠 PG Match Engine (AI + Learning System)")
+st.set_page_config(page_title="PG Match Engine", layout="centered")
+st.title("🏠 PG Match Engine (AI + Smart Matching)")
 
 # ---------------- GOOGLE SHEETS ----------------
 scope = [
@@ -43,6 +43,7 @@ def parse_json(val):
         return {}
 
 df["parsed"] = df["sharing_json"].apply(parse_json)
+
 df["price"] = df["parsed"].apply(lambda x: x.get("price", 0))
 df["available_beds"] = df["parsed"].apply(lambda x: x.get("available_beds", 0))
 
@@ -53,19 +54,24 @@ phone = st.text_input("Phone")
 
 st.subheader("🎯 Your Preferences")
 
-budget = st.number_input("Budget", min_value=1000, value=6000)
+budget = st.number_input("Budget (₹)", min_value=1000, value=6000)
+
 location = st.selectbox("Location", df["location"].dropna().unique())
+
 food = st.selectbox("Food Type", ["Veg", "Non Veg", "Mixed"])
-food_expect = st.slider("Food Quality Expectation", 1, 5, 3)
+
+# ✅ FIXED FOOD SLIDER
+food_expect = st.slider("Food Quality Expectation ⭐", 1, 5, 3)
 
 crowd = st.selectbox("Preferred Crowd", ["Students", "Employees", "Mixed"])
 room_type = st.selectbox("Room Type", ["AC", "Non-AC"])
+
 cleanliness_user = st.slider("Cleanliness Expectation", 1, 10, 5)
 
-# ---------------- LOAD USER HISTORY ----------------
-user_history = history_df[history_df["phone"] == phone]
+# ---------------- USER HISTORY ----------------
+user_history = history_df[history_df["phone"] == phone] if not history_df.empty else pd.DataFrame()
 
-# ---------------- FIND BUTTON ----------------
+# ---------------- BUTTON ----------------
 if st.button("🔍 Find Best PGs"):
 
     # SAVE USER DATA
@@ -92,25 +98,29 @@ if st.button("🔍 Find Best PGs"):
 
         price = row["price"]
 
-        # -------- BUDGET FIX --------
+        # ---------------- BUDGET FIX ----------------
         if price <= budget:
             score += 30
-            reasons.append(f"Fits your budget ₹{budget} (PG price ₹{price})")
+            reasons.append(f"Within your budget (₹{budget}). PG price ₹{price}")
         elif price <= budget + 1000:
             score += 20
-            reasons.append(f"Slightly above budget (₹{price})")
+            reasons.append(f"Slightly above your budget (₹{budget}). PG price ₹{price}")
             cons.append("Slightly expensive")
         else:
             continue
 
-        # -------- LOCATION --------
+        # ---------------- LOCATION ----------------
         if str(row["location"]).lower() == location.lower():
             score += 25
             reasons.append("Exact location match")
+        else:
+            score += 10
+            cons.append("Different location")
 
-        # -------- FOOD (NEW FIX) --------
+        # ---------------- FOOD (FIXED) ----------------
         pg_food = str(row.get("food_type", "")).lower()
-        pg_food_rating = float(row.get("food_rating", 3))
+
+        food_rating = float(row["food_rating"]) if "food_rating" in df.columns else 3
 
         if food.lower() == pg_food:
             score += 5
@@ -119,9 +129,8 @@ if st.button("🔍 Find Best PGs"):
         else:
             cons.append("Food type mismatch")
 
-        diff_food = abs(food_expect - pg_food_rating)
-        food_score = max(0, 10 - diff_food * 2)
-        score += food_score
+        diff_food = abs(food_expect - food_rating)
+        score += max(0, 10 - diff_food * 2)
 
         if diff_food <= 1:
             reasons.append("Food quality matches expectation")
@@ -129,7 +138,7 @@ if st.button("🔍 Find Best PGs"):
         else:
             cons.append("Food quality below expectation")
 
-        # -------- CROWD --------
+        # ---------------- CROWD ----------------
         pg_crowd = str(row.get("crowd", "")).lower()
 
         if crowd.lower() == pg_crowd:
@@ -139,50 +148,42 @@ if st.button("🔍 Find Best PGs"):
         else:
             cons.append("Crowd mismatch")
 
-        # -------- CLEANLINESS --------
+        # ---------------- CLEANLINESS ----------------
         pg_clean = int(row.get("cleanliness", 5))
-        diff = abs(cleanliness_user - pg_clean)
 
-        score += max(0, 15 - diff * 2)
+        diff_clean = abs(cleanliness_user - pg_clean)
+        score += max(0, 15 - diff_clean * 2)
 
-        if diff <= 2:
+        if diff_clean <= 2:
             pros.append("High cleanliness")
         else:
             cons.append("Cleanliness below expectation")
 
-        # ==================================================
-        # 🧠 LEARNING SYSTEM (NEW 🔥)
-        # ==================================================
+        # ---------------- LEARNING SYSTEM ----------------
         if not user_history.empty:
-
             past = user_history.iloc[-1]
 
-            if past["location"] == row["location"]:
+            if str(past["location"]).lower() == str(row["location"]).lower():
                 score += 5
 
-            if past["food"].lower() == pg_food:
+            if str(past["food"]).lower() == pg_food:
                 score += 5
 
-            if past["crowd"].lower() == pg_crowd:
-                score += 5
+        # ---------------- PAIN SCORE ----------------
+        food_r = float(row.get("food_rating", 3))
+        clean_r = float(row.get("cleanliness", 5)) / 2
+        noise_r = float(row.get("noise_rating", 3))
+        safety_r = float(row.get("safety_rating", 3))
+        crowd_r = float(row.get("crowd_rating", 3))
 
-        # ==================================================
-        # ⭐ PAIN SCORE
-        # ==================================================
-        food_rating = float(row.get("food_rating", 3))
-        clean_rating = float(row.get("cleanliness", 5)) / 2
-        noise_rating = float(row.get("noise_rating", 3))
-        safety_rating = float(row.get("safety_rating", 3))
-        crowd_rating = float(row.get("crowd_rating", 3))
-
-        pain_avg = round((food_rating + clean_rating + noise_rating + safety_rating + crowd_rating) / 5, 1)
+        pain_avg = round((food_r + clean_r + noise_r + safety_r + crowd_r) / 5, 1)
 
         pain_dict = {
-            "Food": food_rating,
-            "Cleanliness": clean_rating,
-            "Noise": noise_rating,
-            "Safety": safety_rating,
-            "Crowd": crowd_rating
+            "Food": food_r,
+            "Cleanliness": clean_r,
+            "Noise": noise_r,
+            "Safety": safety_r,
+            "Crowd": crowd_r
         }
 
         worst = min(pain_dict, key=pain_dict.get)
@@ -190,8 +191,9 @@ if st.button("🔍 Find Best PGs"):
         if pain_dict[worst] <= 2:
             pain_msg = f"⚠️ {worst} is poor"
         else:
-            pain_msg = "✅ Overall good"
+            pain_msg = "✅ Overall good living conditions"
 
+        # ---------------- RESULT ----------------
         results.append({
             "pg": row["pg_name"],
             "score": int(score),
@@ -205,7 +207,10 @@ if st.button("🔍 Find Best PGs"):
     results = sorted(results, key=lambda x: x["score"], reverse=True)[:3]
 
     # ---------------- OUTPUT ----------------
-    st.subheader("🏆 Top Matches")
+    st.subheader("🏆 Top Matches For You")
+
+    if not results:
+        st.error("No PGs found ❌")
 
     for r in results:
 
