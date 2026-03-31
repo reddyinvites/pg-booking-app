@@ -87,10 +87,9 @@ if st.button("🔍 Find Best PGs"):
 
     df = room_df.copy()
 
-    # FIX PRICE TYPE
     df["price"] = pd.to_numeric(df["price"], errors="coerce").fillna(0)
 
-    # HARD FILTER
+    # FILTER
     if "gender" in df.columns:
         df = df[df["gender"] == gender]
 
@@ -100,7 +99,6 @@ if st.button("🔍 Find Best PGs"):
         score = 0
         price = row["price"]
 
-        # 💰 Budget Logic (SMART)
         if price <= budget:
             score += 30
         else:
@@ -112,13 +110,11 @@ if st.button("🔍 Find Best PGs"):
             else:
                 score += 5
 
-        # 📍 Location
         if location.lower() in str(row["location"]).lower():
             score += 25
         else:
             score += 10
 
-        # 🧼 Cleanliness
         try:
             clean = int(row.get("cleanliness", 5))
             diff = abs(clean - cleanliness_pref)
@@ -126,15 +122,12 @@ if st.button("🔍 Find Best PGs"):
         except:
             score += 5
 
-        # 🍽 Food
         if str(row.get("food_type","")).lower() == food_type.lower():
             score += 10
 
-        # 👥 Crowd
         if str(row.get("crowd","")).lower() == crowd.lower():
             score += 10
 
-        # 🛏 Room Type
         if str(row.get("room_type","")).lower() == room_type.lower():
             score += 10
 
@@ -142,8 +135,64 @@ if st.button("🔍 Find Best PGs"):
 
     df["score"] = df.apply(calculate_score, axis=1)
 
-    # SORT TOP 3
     df = df.sort_values(by="score", ascending=False).head(3)
+
+    # ---------------- AI EXPLANATION ----------------
+    def explain(row):
+
+        why_match = []
+        why_choose = []
+        consider = []
+
+        price = int(row.get("price", 0))
+        clean = int(row.get("cleanliness", 5))
+        beds = int(row.get("available_beds", 0))
+        sharing = int(row.get("sharing", 1))
+
+        # WHY MATCH
+        if price <= budget:
+            why_match.append(f"Perfect budget match (₹{price})")
+        else:
+            why_match.append(f"Slightly above budget (₹{price})")
+
+        if location.lower() in str(row["location"]).lower():
+            why_match.append(f"Exact location match ({location})")
+
+        if str(row.get("food_type","")).lower() == food_type.lower():
+            why_match.append("Food preference matched")
+
+        if str(row.get("crowd","")).lower() == crowd.lower():
+            why_match.append("Crowd type matched")
+
+        # WHY CHOOSE
+        if clean >= 8:
+            why_choose.append("High cleanliness standards")
+        elif clean >= 5:
+            why_choose.append("Decent cleanliness")
+
+        if beds > 0:
+            why_choose.append("Beds available immediately")
+
+        if price < budget:
+            why_choose.append("Budget friendly option")
+
+        if sharing <= 2:
+            why_choose.append("Less crowded room")
+
+        # CONSIDER
+        if price > budget:
+            consider.append(f"₹{price - budget} above your budget")
+
+        if clean < cleanliness_pref:
+            consider.append("Cleanliness lower than expected")
+
+        if beds == 0:
+            consider.append("Limited availability")
+
+        if sharing >= 3:
+            consider.append("More sharing (crowded)")
+
+        return why_match, why_choose, consider
 
     # ---------------- DISPLAY ----------------
     st.subheader("🏆 Top Matches For You")
@@ -152,55 +201,24 @@ if st.button("🔍 Find Best PGs"):
         st.error("No PGs found ❌")
 
     else:
-
-        def explain(row):
-
-            text = ""
-
-            if row["price"] <= budget:
-                text += "✅ Perfect budget match. "
-            else:
-                text += f"⚠️ ₹{int(row['price'] - budget)} above budget. "
-
-            if location.lower() in str(row["location"]).lower():
-                text += "📍 Exact location match. "
-
-            if str(row.get("food_type","")).lower() == food_type.lower():
-                text += "🍽 Food matches. "
-
-            if str(row.get("crowd","")).lower() == crowd.lower():
-                text += "👥 Good crowd match. "
-
-            try:
-                clean = int(row.get("cleanliness",5))
-                if clean >= cleanliness_pref:
-                    text += "🧼 Clean. "
-                else:
-                    text += "🧼 Average cleanliness. "
-            except:
-                pass
-
-            return text
-
         for _, row in df.iterrows():
 
             match_percent = int(row["score"])
 
+            why_match, why_choose, consider = explain(row)
+
             st.markdown(f"## 🏠 {row['pg_name']} — {match_percent}% Match")
 
             st.success("Why this match?")
-            st.write(explain(row))
+            for item in why_match:
+                st.write(f"• {item}")
 
             st.info("Why choose this PG?")
-            st.write("✔ Good balance of price & features")
-            st.write("✔ Matches most of your needs")
+            for item in why_choose:
+                st.write(f"• {item}")
 
             st.warning("Things to consider:")
-
-            if row["price"] > budget:
-                st.write("• Slightly expensive")
-
-            if location.lower() not in str(row["location"]).lower():
-                st.write("• Different location")
+            for item in consider:
+                st.write(f"• {item}")
 
             st.divider()
