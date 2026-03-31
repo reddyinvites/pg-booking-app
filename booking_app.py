@@ -82,42 +82,68 @@ food_required = st.selectbox("Food Required", ["Yes", "No"])
 cleanliness = st.selectbox("Cleanliness", ["Low", "Medium", "High"])
 
 # =========================================================
-# 🔥 MATCH ENGINE
+# 🧠 ADVANCED MATCH ENGINE
 # =========================================================
 def calculate_score(row):
+
     score = 0
+    reasons = []
+    drawbacks = []
 
     # Budget (30%)
     if row["price"] <= budget:
         score += 30
+        reasons.append("Within your budget")
     else:
-        diff = abs(row["price"] - budget)
-        score += max(0, 30 - diff/100)
+        diff = row["price"] - budget
+        penalty = min(30, diff / 100)
+        score += max(0, 30 - penalty)
+        drawbacks.append(f"₹{diff} above budget")
 
     # Location (25%)
-    if location.lower() in str(row.get("location", "")).lower():
-        score += 25
+    if location.strip() != "":
+        if location.lower() in str(row.get("location", "")).lower():
+            score += 25
+            reasons.append("Exact location match")
+        else:
+            score += 10
+            drawbacks.append("Different location")
 
     # Sharing (10%)
     if row["sharing"] == sharing_pref:
         score += 10
+        reasons.append("Preferred sharing matched")
+    else:
+        score += 5
+        drawbacks.append("Different sharing type")
 
-    # Beds (20%)
+    # Availability (15%)
     if row["available_beds"] > 0:
-        score += 20
-
-    # Cleanliness (15%)
-    if cleanliness == "High":
         score += 15
-    elif cleanliness == "Medium":
+        reasons.append("Beds available")
+    else:
+        drawbacks.append("Currently full")
+
+    # Cleanliness (10%)
+    if cleanliness == "High":
         score += 10
+        reasons.append("High cleanliness expected")
+    elif cleanliness == "Medium":
+        score += 7
     else:
         score += 5
 
-    return score
+    # Food (10%)
+    if food_required == "Yes":
+        score += 10
+        reasons.append("Food preference considered")
+    else:
+        score += 5
+
+    return score, reasons, drawbacks
 
 # =========================================================
-# 🔍 FIND PGs
+# 🔍 FIND MATCHES
 # =========================================================
 if st.button("🔍 Find Best PGs"):
 
@@ -125,32 +151,45 @@ if st.button("🔍 Find Best PGs"):
         st.error("No PG data available")
         st.stop()
 
-    room_df["score"] = room_df.apply(calculate_score, axis=1)
+    results = room_df.apply(lambda row: calculate_score(row), axis=1)
+
+    room_df["score"] = [r[0] for r in results]
+    room_df["reasons"] = [r[1] for r in results]
+    room_df["drawbacks"] = [r[2] for r in results]
 
     top = room_df.sort_values(by="score", ascending=False).head(3)
 
-    st.subheader("🏆 Top Matches")
+    st.subheader("🏆 Top PG Matches For You")
 
     for i, row in top.iterrows():
 
-        st.markdown(f"""
-### 🏠 {row.get('pg_name','PG')} — {int(row['score'])}% Match
+        match_percent = min(100, int(row["score"]))
 
+        st.markdown(f"### 🏠 {row.get('pg_name','PG')} — {match_percent}% Match")
+
+        # WHY MATCH
+        st.success("✅ Why this match?")
+        for r in row["reasons"]:
+            st.write(f"✔ {r}")
+
+        # DRAWBACKS
+        if row["drawbacks"]:
+            st.warning("⚠️ Things to consider")
+            for d in row["drawbacks"]:
+                st.write(f"• {d}")
+
+        # DETAILS
+        st.markdown(f"""
 💰 Price: ₹{row['price']}  
 📍 Location: {row.get('location','N/A')}  
 👥 Sharing: {row['sharing']}  
 🛏 Beds Available: {row['available_beds']}
 """)
 
-        st.info("Why this match?")
-        st.write("✔ Budget compatible")
-        st.write("✔ Location relevance")
-        st.write("✔ Beds available")
-
-        # ---------------- BOOK ----------------
+        # BOOK
         if row["available_beds"] > 0:
 
-            if st.button(f"Book {row.get('pg_name','PG')}", key=i):
+            if st.button(f"Book {row.get('pg_name','PG')}", key=f"book_{i}"):
 
                 if name.strip()=="" or phone.strip()=="":
                     st.error("Enter name & phone")
@@ -166,7 +205,6 @@ if st.button("🔍 Find Best PGs"):
                     "available_beds": new_beds
                 }
 
-                # 🔥 UPDATE JSON BACK
                 room_sheet.update(
                     f"A{i+2}",
                     [[json.dumps([new_json])]]
