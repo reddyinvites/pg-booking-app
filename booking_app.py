@@ -44,8 +44,8 @@ def parse_json(val):
 
 df["parsed"] = df["sharing_json"].apply(parse_json)
 
-df["price"] = df["parsed"].apply(lambda x: x.get("price", 0))
-df["available_beds"] = df["parsed"].apply(lambda x: x.get("available_beds", 0))
+df["price"] = df["parsed"].apply(lambda x: int(x.get("price", 0)))
+df["available_beds"] = df["parsed"].apply(lambda x: int(x.get("available_beds", 0)))
 
 # ---------------- USER INPUT ----------------
 st.subheader("👤 Your Details")
@@ -55,16 +55,11 @@ phone = st.text_input("Phone")
 st.subheader("🎯 Your Preferences")
 
 budget = st.number_input("Budget (₹)", min_value=1000, value=6000)
-
 location = st.selectbox("Location", df["location"].dropna().unique())
-
 food = st.selectbox("Food Type", ["Veg", "Non Veg", "Mixed"])
-
 food_expect = st.slider("Food Quality Expectation ⭐", 1, 5, 3)
-
 crowd = st.selectbox("Preferred Crowd", ["Students", "Employees", "Mixed"])
 room_type = st.selectbox("Room Type", ["AC", "Non-AC"])
-
 cleanliness_user = st.slider("Cleanliness Expectation", 1, 10, 5)
 
 # ---------------- USER HISTORY ----------------
@@ -75,7 +70,6 @@ if st.button("🔍 Find Best PGs"):
 
     st.info(f"Showing PGs under your budget ₹{budget}")
 
-    # SAVE USER DATA
     if phone:
         history_sheet.append_row([
             phone,
@@ -99,27 +93,26 @@ if st.button("🔍 Find Best PGs"):
 
         price = int(row["price"])
 
-        # ---------------- ORIGINAL BUDGET LOGIC (UNCHANGED) ----------------
+        # ---------------- BUDGET ----------------
         if price <= budget:
             score += 30
-            reasons.append(f"Within your budget (₹{budget}). PG price ₹{price}")
+            reasons.append(f"Within your budget ₹{budget} (PG ₹{price})")
         elif price <= budget + 1000:
             score += 20
-            reasons.append(f"Slightly above your budget (₹{budget}). PG price ₹{price}")
+            reasons.append(f"Slightly above budget ₹{price}")
             cons.append("Slightly expensive")
         else:
             continue
 
-        # ---------------- NEW SMART BUDGET EXPLANATION ----------------
+        # SMART TEXT
         diff = budget - price
-
         if diff >= 0:
             if diff == 0:
-                reasons.append(f"Perfect match — exactly ₹{price}")
+                reasons.append(f"Perfect match ₹{price}")
             elif diff <= 1000:
-                reasons.append(f"Close to your budget — ₹{price}")
+                reasons.append(f"Close to budget ₹{price}")
             elif diff <= 3000:
-                reasons.append(f"Good deal — ₹{diff} cheaper than your budget")
+                reasons.append(f"Good deal — ₹{diff} cheaper")
             else:
                 reasons.append(f"Best deal — save ₹{diff}")
 
@@ -133,28 +126,25 @@ if st.button("🔍 Find Best PGs"):
 
         # ---------------- FOOD ----------------
         pg_food = str(row.get("food_type", "")).lower()
-
-        food_rating = float(row["food_rating"]) if "food_rating" in df.columns else 3
+        food_rating = float(row.get("food_rating", 3))
 
         if food.lower() == pg_food:
             score += 5
         elif pg_food == "mixed":
             score += 3
         else:
-            cons.append("Food type mismatch")
+            cons.append("Food mismatch")
 
         diff_food = abs(food_expect - food_rating)
         score += max(0, 10 - diff_food * 2)
 
         if diff_food <= 1:
-            reasons.append("Food quality matches expectation")
             pros.append("Good food quality")
         else:
             cons.append("Food quality below expectation")
 
         # ---------------- CROWD ----------------
         pg_crowd = str(row.get("crowd", "")).lower()
-
         if crowd.lower() == pg_crowd:
             score += 10
         elif pg_crowd == "mixed":
@@ -162,10 +152,10 @@ if st.button("🔍 Find Best PGs"):
         else:
             cons.append("Crowd mismatch")
 
-        # ---------------- CLEANLINESS ----------------
+        # ---------------- CLEAN ----------------
         pg_clean = int(row.get("cleanliness", 5))
-
         diff_clean = abs(cleanliness_user - pg_clean)
+
         score += max(0, 15 - diff_clean * 2)
 
         if diff_clean <= 2:
@@ -173,13 +163,11 @@ if st.button("🔍 Find Best PGs"):
         else:
             cons.append("Cleanliness below expectation")
 
-        # ---------------- LEARNING SYSTEM ----------------
+        # ---------------- LEARNING ----------------
         if not user_history.empty:
             past = user_history.iloc[-1]
-
             if str(past["location"]).lower() == str(row["location"]).lower():
                 score += 5
-
             if str(past["food"]).lower() == pg_food:
                 score += 5
 
@@ -210,6 +198,7 @@ if st.button("🔍 Find Best PGs"):
         results.append({
             "pg": row["pg_name"],
             "score": int(score),
+            "price": price,
             "reasons": reasons,
             "pros": pros,
             "cons": cons,
@@ -217,21 +206,42 @@ if st.button("🔍 Find Best PGs"):
             "pain_msg": pain_msg
         })
 
+    # ---------------- SORT ----------------
     results = sorted(results, key=lambda x: x["score"], reverse=True)[:3]
 
-    st.success(f"Top {len(results)} PGs selected based on your budget ₹{budget}")
+    # ---------------- HIGHLIGHTS ----------------
+    if results:
+        top_score = max(results, key=lambda x: x["score"])["score"]
+        cheapest_price = min(r["price"] for r in results)
 
-    # ---------------- OUTPUT ----------------
+        def value_score(r):
+            return r["score"] / (r["price"] if r["price"] > 0 else 1)
+
+        best_value_pg = max(results, key=value_score)["pg"]
+
+    # ---------------- DISPLAY ----------------
     st.subheader("🏆 Top Matches For You")
-
-    if not results:
-        st.error("No PGs found ❌")
 
     for r in results:
 
-        st.markdown(f"## 🏠 {r['pg']} — {r['score']}% Match")
+        st.markdown("""
+        <div style="background:#ffffff;padding:18px;border-radius:15px;
+        margin-bottom:15px;box-shadow:0 2px 10px rgba(0,0,0,0.08);">
+        """, unsafe_allow_html=True)
 
-        # SMART TAG
+        st.markdown(f"### 🏠 {r['pg']} — {r['score']}% Match")
+
+        badge = ""
+        if r["score"] == top_score:
+            badge += "🏆 Top Match  "
+        if r["price"] == cheapest_price:
+            badge += "💰 Cheapest  "
+        if r["pg"] == best_value_pg:
+            badge += "⭐ Best Value  "
+
+        if badge:
+            st.markdown(f"**{badge}**")
+
         if r["score"] >= 80:
             st.success("🔥 Highly Recommended")
         elif r["score"] >= 60:
@@ -247,11 +257,12 @@ if st.button("🔍 Find Best PGs"):
         for i in r["pros"]:
             st.write("✓", i)
 
-        st.markdown("### ⚠️ Things to consider")
-        for i in r["cons"]:
-            st.write("•", i)
+        if r["cons"]:
+            st.markdown("### ⚠️ Things to consider")
+            for i in r["cons"]:
+                st.write("•", i)
 
         st.markdown(f"### ⭐ Pain Score: {r['pain']} / 5")
         st.warning(r["pain_msg"])
 
-        st.divider()
+        st.markdown("</div>", unsafe_allow_html=True)
