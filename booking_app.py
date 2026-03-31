@@ -5,7 +5,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import json
 
 st.set_page_config(page_title="PG Match Engine", layout="centered")
-st.title("🏠 PG Match Engine (AI Powered)")
+st.title("🏠 PG Match Engine + Pain Score")
 
 # ---------------- GOOGLE SHEETS ----------------
 scope = [
@@ -44,18 +44,10 @@ df["available_beds"] = df["parsed"].apply(lambda x: x.get("available_beds", 0))
 df["sharing"] = df["parsed"].apply(lambda x: int(x.get("type","0").split()[0]) if x else 0)
 
 # ---------------- USER INPUT ----------------
-st.subheader("👤 Your Details")
-name = st.text_input("Name")
-phone = st.text_input("Phone")
-
 st.subheader("🎯 Your Preferences")
 
 budget = st.number_input("Budget", min_value=1000, value=6000)
-
-location_list = df["location"].dropna().unique()
-location = st.selectbox("Location", location_list)
-
-gender = st.selectbox("Gender", ["Male", "Female"])
+location = st.selectbox("Location", df["location"].dropna().unique())
 food = st.selectbox("Food Type", ["Veg", "Non Veg", "Mixed"])
 crowd = st.selectbox("Preferred Crowd", ["Students", "Employees", "Mixed"])
 room_type = st.selectbox("Room Type", ["AC", "Non-AC"])
@@ -73,11 +65,6 @@ if st.button("🔍 Find Best PGs"):
         pros = []
         cons = []
 
-        # -------- HARD FILTER --------
-        if "gender" in df.columns:
-            if str(row.get("gender", "")).lower() != gender.lower():
-                continue
-
         # -------- BUDGET --------
         price = row["price"]
 
@@ -86,7 +73,6 @@ if st.button("🔍 Find Best PGs"):
             reasons.append(f"Perfect budget match (₹{price})")
         elif price <= budget + 1000:
             score += 20
-            reasons.append(f"Slightly above budget (₹{price})")
             cons.append("Slightly expensive")
         else:
             continue
@@ -94,132 +80,82 @@ if st.button("🔍 Find Best PGs"):
         # -------- LOCATION --------
         if str(row["location"]).lower() == location.lower():
             score += 25
-            reasons.append(f"Exact location match ({location})")
-        else:
-            score += 10
-            cons.append("Different location")
-
-        # -------- FOOD --------
-        pg_food = str(row.get("food_type", "")).lower()
-
-        if food.lower() == pg_food:
-            score += 10
-            reasons.append("Food matches your preference")
-        elif pg_food == "mixed":
-            score += 5
-        else:
-            cons.append("Food mismatch")
-
-        # -------- CROWD --------
-        pg_crowd = str(row.get("crowd", "")).lower()
-
-        if crowd.lower() == pg_crowd:
-            score += 10
-            reasons.append("Preferred crowd matches")
-        elif pg_crowd == "mixed":
-            score += 5
-        else:
-            cons.append("Crowd mismatch")
+            reasons.append("Exact location match")
 
         # -------- CLEANLINESS --------
         pg_clean = int(row.get("cleanliness", 5))
         diff = abs(cleanliness_user - pg_clean)
-        clean_score = max(0, 15 - diff * 2)
-        score += clean_score
+        score += max(0, 15 - diff * 2)
 
-        if diff <= 2:
-            reasons.append("Cleanliness is good")
-            pros.append("High cleanliness standards")
+        # ==================================================
+        # ⭐ PAIN SCORE SYSTEM (NEW 🔥)
+        # ==================================================
+
+        food_rating = float(row.get("food_rating", 3))
+        clean_rating = float(row.get("cleanliness", 5)) / 2   # convert to /5
+        noise_rating = float(row.get("noise_rating", 3))
+        safety_rating = float(row.get("safety_rating", 3))
+        crowd_rating = float(row.get("crowd_rating", 3))
+
+        pain_avg = round((food_rating + clean_rating + noise_rating + safety_rating + crowd_rating) / 5, 1)
+
+        # -------- BIGGEST PAIN --------
+        pain_dict = {
+            "Food": food_rating,
+            "Cleanliness": clean_rating,
+            "Noise": noise_rating,
+            "Safety": safety_rating,
+            "Crowd": crowd_rating
+        }
+
+        worst = min(pain_dict, key=pain_dict.get)
+
+        pain_message = ""
+
+        if pain_dict[worst] <= 2:
+            if worst == "Food":
+                pain_message = "⚠️ Food not good"
+            elif worst == "Cleanliness":
+                pain_message = "⚠️ Bathrooms not clean"
+            elif worst == "Noise":
+                pain_message = "⚠️ Too noisy"
+            elif worst == "Safety":
+                pain_message = "⚠️ Unsafe area"
+            elif worst == "Crowd":
+                pain_message = "⚠️ Bad crowd"
         else:
-            cons.append("Cleanliness lower than expectation")
-
-        # -------- ROOM TYPE --------
-        pg_room = str(row.get("room_type", "")).lower()
-
-        if room_type.lower() == pg_room:
-            score += 5
-        else:
-            cons.append("Room type mismatch")
-
-        # ==================================================
-        # 📍 DISTANCE SCORING (NEW 🔥)
-        # ==================================================
-        metro = int(row.get("metro_dist", 1000))
-        bus = int(row.get("bus_dist", 1000))
-        rail = int(row.get("rail_dist", 1000))
-
-        avg_dist = (metro + bus + rail) / 3
-
-        if avg_dist <= 200:
-            score += 10
-            pros.append("Very well connected (transport nearby)")
-        elif avg_dist <= 500:
-            score += 5
-        else:
-            cons.append("Far from transport")
-
-        # ==================================================
-        # 🧠 NOTES AI ANALYSIS (NEW 🔥)
-        # ==================================================
-        notes = str(row.get("notes", "")).lower()
-
-        if "peaceful" in notes and crowd == "Employees":
-            score += 5
-            reasons.append("Peaceful environment suits employees")
-
-        if "noisy" in notes:
-            cons.append("Noisy surroundings")
-
-        if "family" in notes:
-            pros.append("Safe & family environment")
-
-        if "party" in notes:
-            cons.append("Party environment")
-
-        # ==================================================
-        # ⭐ SMART AI TEXT (NEW 🔥)
-        # ==================================================
-        highlight = ""
-
-        if score >= 80:
-            highlight = "🔥 Highly recommended"
-        elif score >= 60:
-            highlight = "👍 Good choice"
-        else:
-            highlight = "⚖️ Consider carefully"
+            pain_message = "✅ Very clean & peaceful"
 
         results.append({
             "pg": row["pg_name"],
             "score": int(score),
-            "reasons": reasons,
-            "pros": pros,
-            "cons": cons,
-            "highlight": highlight
+            "pain": pain_avg,
+            "food": food_rating,
+            "clean": clean_rating,
+            "noise": noise_rating,
+            "safety": safety_rating,
+            "crowd": crowd_rating,
+            "pain_msg": pain_message
         })
 
     results = sorted(results, key=lambda x: x["score"], reverse=True)[:3]
 
     # ---------------- OUTPUT ----------------
-    st.subheader("🏆 Top Matches For You")
-
-    if not results:
-        st.error("No PGs found ❌")
+    st.subheader("🏆 Top Matches")
 
     for r in results:
 
         st.markdown(f"## 🏠 {r['pg']} — {r['score']}% Match")
-        st.success(r["highlight"])
 
-        st.markdown("### 💡 Why this match?")
-        for i in r["reasons"]:
-            st.write("•", i)
+        # ⭐ PAIN SCORE DISPLAY
+        st.markdown(f"### ⭐ Pain Score: {r['pain']} / 5")
 
-        st.markdown("### 👍 Why choose this PG?")
-        for i in r["pros"]:
-            st.write("✓", i)
+        st.write(f"🍛 Food → {r['food']} ⭐")
+        st.write(f"🧼 Cleanliness → {r['clean']} ⭐")
+        st.write(f"🔇 Noise → {r['noise']} ⭐")
+        st.write(f"🔐 Safety → {r['safety']} ⭐")
+        st.write(f"👥 Crowd → {r['crowd']} ⭐")
 
-        st.markdown("### ⚠️ Things to consider")
-        for i in r["cons"]:
-            st.write("•", i)
+        st.warning(f"Biggest Pain: {r['pain_msg']}")
 
         st.divider()
