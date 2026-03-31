@@ -5,7 +5,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 import json
 
 st.set_page_config(page_title="PG Match Engine", layout="centered")
-
 st.title("🏠 PG Match Engine")
 
 # ---------------- GOOGLE SHEETS ----------------
@@ -22,203 +21,170 @@ client = gspread.authorize(creds)
 
 SHEET_ID = "1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q"
 sheet = client.open_by_key(SHEET_ID)
-
 room_sheet = sheet.worksheet("Sheet1")
 
 # ---------------- LOAD DATA ----------------
-@st.cache_data(ttl=10)
+@st.cache_data(ttl=20)
 def load_data():
     return pd.DataFrame(room_sheet.get_all_records())
 
-room_df = load_data()
+df = load_data()
 
-# ---------------- SAFE JSON PARSE ----------------
-def parse_json_safe(x):
+# ---------------- PARSE JSON ----------------
+def parse_json(val):
     try:
-        return json.loads(x)[0]
+        return json.loads(val)[0]
     except:
         return {}
 
-room_df["parsed"] = room_df["sharing_json"].apply(parse_json_safe)
+df["parsed"] = df["sharing_json"].apply(parse_json)
 
-room_df["price"] = room_df["parsed"].apply(lambda x: int(x.get("price", 0)))
-room_df["available_beds"] = room_df["parsed"].apply(lambda x: int(x.get("available_beds", 0)))
-
-def get_sharing(x):
-    try:
-        return int(x.get("type", "1").split()[0])
-    except:
-        return 1
-
-room_df["sharing"] = room_df["parsed"].apply(get_sharing)
+df["price"] = df["parsed"].apply(lambda x: x.get("price", 0))
+df["available_beds"] = df["parsed"].apply(lambda x: x.get("available_beds", 0))
+df["sharing"] = df["parsed"].apply(lambda x: int(x.get("type","0").split()[0]) if x else 0)
 
 # ---------------- USER DETAILS ----------------
 st.subheader("👤 Your Details")
 name = st.text_input("Name")
 phone = st.text_input("Phone")
 
-# ---------------- FILTERS ----------------
+# ---------------- PREFERENCES ----------------
 st.subheader("🎯 Your Preferences")
 
-budget = st.number_input("Budget", value=6000)
+budget = st.number_input("Budget", min_value=1000, value=6000)
 
-location = st.selectbox(
-    "Location",
-    sorted(room_df["location"].dropna().unique())
-)
+location_list = df["location"].dropna().unique()
+location = st.selectbox("Location", location_list)
 
-gender = st.selectbox(
-    "Gender",
-    sorted(room_df["gender"].dropna().unique()) if "gender" in room_df.columns else ["Male", "Female"]
-)
+gender = st.selectbox("Gender", ["Male", "Female"])
 
-food_type = st.selectbox("Food Type", ["Veg", "Non Veg", "Mixed"])
-crowd = st.selectbox("Preferred Crowd", ["Employees", "Students", "Mixed"])
+food = st.selectbox("Food Type", ["Veg", "Non Veg", "Mixed"])
 
-room_type = st.selectbox(
-    "Room Type",
-    sorted(room_df["room_type"].dropna().unique()) if "room_type" in room_df.columns else ["Non-AC", "AC"]
-)
+crowd = st.selectbox("Preferred Crowd", ["Students", "Employees", "Mixed"])
 
-cleanliness_pref = st.slider("Cleanliness Expectation", 1, 10, 7)
+room_type = st.selectbox("Room Type", ["AC", "Non-AC"])
+
+cleanliness_user = st.slider("Cleanliness Expectation", 1, 10, 5)
 
 # ---------------- FIND BUTTON ----------------
 if st.button("🔍 Find Best PGs"):
 
-    df = room_df.copy()
+    results = []
 
-    df["price"] = pd.to_numeric(df["price"], errors="coerce").fillna(0)
-
-    # FILTER
-    if "gender" in df.columns:
-        df = df[df["gender"] == gender]
-
-    # ---------------- SCORING ----------------
-    def calculate_score(row):
+    for _, row in df.iterrows():
 
         score = 0
+        reasons = []
+        pros = []
+        cons = []
+
+        # -------- HARD FILTER --------
+        if "gender" in df.columns:
+            if str(row.get("gender", "")).lower() != gender.lower():
+                continue
+
+        # -------- BUDGET --------
         price = row["price"]
 
         if price <= budget:
             score += 30
+            reasons.append(f"Perfect budget match (₹{price})")
+        elif price <= budget + 1000:
+            score += 20
+            reasons.append(f"Slightly above budget (₹{price})")
+            cons.append("Slightly expensive")
         else:
-            diff = price - budget
-            if diff <= 1000:
-                score += 20
-            elif diff <= 2000:
-                score += 10
-            else:
-                score += 5
+            continue
 
-        if location.lower() in str(row["location"]).lower():
+        # -------- LOCATION --------
+        if str(row["location"]).lower() == location.lower():
             score += 25
+            reasons.append(f"Exact location match ({location})")
         else:
             score += 10
+            cons.append("Different location")
 
-        try:
-            clean = int(row.get("cleanliness", 5))
-            diff = abs(clean - cleanliness_pref)
-            score += max(0, 15 - diff*2)
-        except:
+        # -------- FOOD --------
+        pg_food = str(row.get("food_type", "")).lower()
+
+        if food.lower() == pg_food:
+            score += 10
+            reasons.append("Food matches your preference")
+        elif pg_food == "mixed":
             score += 5
-
-        if str(row.get("food_type","")).lower() == food_type.lower():
-            score += 10
-
-        if str(row.get("crowd","")).lower() == crowd.lower():
-            score += 10
-
-        if str(row.get("room_type","")).lower() == room_type.lower():
-            score += 10
-
-        return score
-
-    df["score"] = df.apply(calculate_score, axis=1)
-
-    df = df.sort_values(by="score", ascending=False).head(3)
-
-    # ---------------- AI EXPLANATION ----------------
-    def explain(row):
-
-        why_match = []
-        why_choose = []
-        consider = []
-
-        price = int(row.get("price", 0))
-        clean = int(row.get("cleanliness", 5))
-        beds = int(row.get("available_beds", 0))
-        sharing = int(row.get("sharing", 1))
-
-        # WHY MATCH
-        if price <= budget:
-            why_match.append(f"Perfect budget match (₹{price})")
         else:
-            why_match.append(f"Slightly above budget (₹{price})")
+            cons.append("Food mismatch")
 
-        if location.lower() in str(row["location"]).lower():
-            why_match.append(f"Exact location match ({location})")
+        # -------- CROWD --------
+        pg_crowd = str(row.get("crowd", "")).lower()
 
-        if str(row.get("food_type","")).lower() == food_type.lower():
-            why_match.append("Food preference matched")
+        if crowd.lower() == pg_crowd:
+            score += 10
+            reasons.append("Preferred crowd matches")
+        elif pg_crowd == "mixed":
+            score += 5
+        else:
+            cons.append("Crowd mismatch")
 
-        if str(row.get("crowd","")).lower() == crowd.lower():
-            why_match.append("Crowd type matched")
+        # -------- CLEANLINESS --------
+        pg_clean = int(row.get("cleanliness", 5))
 
-        # WHY CHOOSE
-        if clean >= 8:
-            why_choose.append("High cleanliness standards")
-        elif clean >= 5:
-            why_choose.append("Decent cleanliness")
+        diff = abs(cleanliness_user - pg_clean)
+        clean_score = max(0, 15 - diff * 2)
 
-        if beds > 0:
-            why_choose.append("Beds available immediately")
+        score += clean_score
 
-        if price < budget:
-            why_choose.append("Budget friendly option")
+        if diff <= 2:
+            reasons.append("Cleanliness is good")
+            pros.append("High cleanliness standards")
+        else:
+            cons.append("Cleanliness lower than expectation")
 
-        if sharing <= 2:
-            why_choose.append("Less crowded room")
+        # -------- ROOM TYPE --------
+        pg_room = str(row.get("room_type", "")).lower()
 
-        # CONSIDER
-        if price > budget:
-            consider.append(f"₹{price - budget} above your budget")
+        if room_type.lower() == pg_room:
+            score += 5
+        else:
+            cons.append("Room type mismatch")
 
-        if clean < cleanliness_pref:
-            consider.append("Cleanliness lower than expected")
+        # -------- AVAILABILITY --------
+        if row["available_beds"] > 0:
+            pros.append("Beds available immediately")
+        else:
+            cons.append("Currently full")
 
-        if beds == 0:
-            consider.append("Limited availability")
+        results.append({
+            "pg": row["pg_name"],
+            "score": int(score),
+            "reasons": reasons,
+            "pros": pros,
+            "cons": cons
+        })
 
-        if sharing >= 3:
-            consider.append("More sharing (crowded)")
+    # ---------------- SORT ----------------
+    results = sorted(results, key=lambda x: x["score"], reverse=True)[:3]
 
-        return why_match, why_choose, consider
-
-    # ---------------- DISPLAY ----------------
+    # ---------------- OUTPUT ----------------
     st.subheader("🏆 Top Matches For You")
 
-    if df.empty:
+    if not results:
         st.error("No PGs found ❌")
 
-    else:
-        for _, row in df.iterrows():
+    for r in results:
 
-            match_percent = int(row["score"])
+        st.markdown(f"## 🏠 {r['pg']} — {r['score']}% Match")
 
-            why_match, why_choose, consider = explain(row)
+        st.success("Why this match?")
+        for i in r["reasons"]:
+            st.write("•", i)
 
-            st.markdown(f"## 🏠 {row['pg_name']} — {match_percent}% Match")
+        st.info("Why choose this PG?")
+        for i in r["pros"]:
+            st.write("✓", i)
 
-            st.success("Why this match?")
-            for item in why_match:
-                st.write(f"• {item}")
+        st.warning("Things to consider:")
+        for i in r["cons"]:
+            st.write("•", i)
 
-            st.info("Why choose this PG?")
-            for item in why_choose:
-                st.write(f"• {item}")
-
-            st.warning("Things to consider:")
-            for item in consider:
-                st.write(f"• {item}")
-
-            st.divider()
+        st.divider()
