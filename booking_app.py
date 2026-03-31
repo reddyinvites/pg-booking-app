@@ -4,6 +4,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
 from datetime import datetime
 import urllib.parse
+import ast
 
 st.set_page_config(page_title="PG Booking", layout="centered")
 st.title("🏠 PG Booking")
@@ -27,7 +28,7 @@ room_sheet = sheet.worksheet("Sheet1")
 booking_sheet = sheet.worksheet("Bookings")
 owner_sheet = sheet.worksheet("Owners")
 
-# -------- CACHE --------
+# -------- LOAD DATA --------
 @st.cache_data(ttl=20)
 def load_data():
     rooms = pd.DataFrame(room_sheet.get_all_records())
@@ -37,13 +38,20 @@ def load_data():
 
 room_df, booking_df, owner_df = load_data()
 
+# -------- PARSE JSON --------
+def parse_sharing(row):
+    try:
+        return ast.literal_eval(row["sharing_json"])
+    except:
+        return []
+
 # -------- REFRESH --------
 if st.button("🔄 Refresh"):
     st.cache_data.clear()
     st.rerun()
 
 # =========================================================
-# 👤 USER DETAILS
+# 👤 USER DETAILS (STEP 1)
 # =========================================================
 st.subheader("👤 Your Details")
 
@@ -51,63 +59,103 @@ user_name = st.text_input("Your Name")
 phone = st.text_input("Phone Number")
 
 # =========================================================
-# 🔍 FILTER (AFTER DETAILS ✅)
+# 🧾 USER NEEDS (STEP 2)
 # =========================================================
-st.subheader("🔍 Filter")
+st.subheader("🧾 Your Requirements")
 
-pg_list = room_df["pg_name"].dropna().unique()
-selected_pg = st.selectbox("Select PG", pg_list)
-
-sharing_filter = st.selectbox("Sharing", ["All", 1, 2, 3, 4, 5])
-
-filtered = room_df[room_df["pg_name"] == selected_pg]
-
-if sharing_filter != "All":
-    filtered = filtered[filtered["sharing"] == sharing_filter]
+budget = st.number_input("Budget ₹", value=6000)
+location = st.text_input("Preferred Location")
+sharing_pref = st.selectbox("Sharing", [1,2,3,4])
+food_pref = st.selectbox("Food", ["Any","Veg","Non-Veg"])
 
 # =========================================================
-# 🛏 ROOMS LIST (AFTER FILTER ✅)
+# 🤖 MATCH ENGINE (STEP 3)
 # =========================================================
-st.subheader("🛏 Available Rooms")
+if st.button("🔍 Find Best PG"):
 
-for i, row in filtered.iterrows():
+    if user_name.strip() == "" or phone.strip() == "":
+        st.error("Enter Name & Phone ❌")
+        st.stop()
 
-    room_no = str(row["room_no"])
-    sharing = int(row["sharing"])
-    beds = int(row["available_beds"])
-    floor = row["floor"]
-    pg = row["pg_name"]
+    results = []
 
-    st.markdown(f"""
-### 🏠 {pg}
-🏢 Room: {room_no}  
-👥 Sharing: {sharing}  
-🛏 Beds Available: {beds}  
-🏢 Floor: {floor}
+    for i, row in room_df.iterrows():
+
+        sharing_data = parse_sharing(row)
+
+        for s in sharing_data:
+
+            if int(s["available_beds"]) <= 0:
+                continue
+
+            if int(s["type"]) != sharing_pref:
+                continue
+
+            score = 0
+
+            # Budget
+            diff = abs(int(s["price"]) - budget)
+            if diff <= 500:
+                score += 30
+            elif diff <= 1000:
+                score += 20
+
+            # Location
+            if location.lower() in str(row["location"]).lower():
+                score += 25
+
+            # Food
+            if food_pref != "Any":
+                if food_pref.lower() in str(row["food_type"]).lower():
+                    score += 15
+
+            # Availability
+            score += int(s["available_beds"]) * 5
+
+            results.append((score, row, s))
+
+    results = sorted(results, key=lambda x: x[0], reverse=True)[:3]
+
+    st.subheader("🏆 Best Matches")
+
+    for score, row, s in results:
+
+        st.markdown(f"""
+### 🏠 {row['pg_name']} — {score}% Match
+
+📍 {row['location']}  
+💰 ₹{s['price']}  
+👥 {s['type']} Sharing  
+🛏 {s['available_beds']} Beds  
+
+🍛 {row['food_type']}
+📞 {row['owner_number']}
 """)
 
-    if beds > 0:
-        if st.button(f"Book Room {room_no}", key=f"book_{pg}_{room_no}"):
+        # BOOK BUTTON FROM MATCH
+        if st.button(f"Book {row['pg_name']} Room", key=f"{row['pg_name']}_{s['type']}"):
 
-            if user_name.strip() == "" or phone.strip() == "":
-                st.error("Enter name & phone")
-                st.stop()
+            # reduce beds
+            new_beds = int(s["available_beds"]) - 1
 
-            match = room_df[
-                (room_df["pg_name"] == pg) &
-                (room_df["room_no"].astype(str) == room_no)
-            ]
+            # update full JSON
+            sharing_data_updated = parse_sharing(row)
 
-            if not match.empty:
-                idx = match.index[0]
-                room_sheet.update(f"E{idx+2}", [[beds - 1]])
+            for item in sharing_data_updated:
+                if item["type"] == s["type"]:
+                    item["available_beds"] = new_beds
 
+            room_sheet.update(
+                f"E{i+2}",
+                [[str(sharing_data_updated)]]
+            )
+
+            # save booking
             booking_sheet.append_row([
                 user_name,
                 phone,
-                pg,
-                room_no,
-                sharing,
+                row["pg_name"],
+                s["type"],
                 datetime.now().strftime("%Y-%m-%d %H:%M")
             ])
 
@@ -115,13 +163,10 @@ for i, row in filtered.iterrows():
             st.cache_data.clear()
             st.rerun()
 
-    else:
-        st.error("❌ Full")
-
-    st.divider()
+        st.divider()
 
 # =========================================================
-# 📜 BOOKING HISTORY (LAST ✅)
+# 📜 BOOKING HISTORY (STEP 4)
 # =========================================================
 st.subheader("📜 Booking History")
 
@@ -133,59 +178,9 @@ if not booking_df.empty:
 👤 {row['user_name']}  
 📞 {row['phone']}  
 🏠 {row['pg_name']}  
-🏢 Room: {row['room_no']}  
 👥 Sharing: {row['sharing']}  
 🕒 {row['booked_at']}
 """)
-
-        col1, col2 = st.columns(2)
-
-        # 📲 WHATSAPP
-        with col1:
-            owner_row = owner_df[
-                owner_df["pg_name"].astype(str).str.strip() ==
-                str(row["pg_name"]).strip()
-            ]
-
-            if not owner_row.empty:
-                owner_phone = str(owner_row.iloc[0]["phone"])
-
-                message = f"""
-New Booking
-
-Name: {row['user_name']}
-Phone: {row['phone']}
-PG: {row['pg_name']}
-Room: {row['room_no']}
-"""
-
-                link = f"https://wa.me/{owner_phone}?text={urllib.parse.quote(message)}"
-                st.link_button("📲 WhatsApp", link)
-            else:
-                st.button("📲 WhatsApp", disabled=True)
-
-        # ❌ CANCEL (BESIDE WHATSAPP ✅)
-        with col2:
-            if st.button("❌ Cancel", key=f"cancel_{i}"):
-
-                room_data = room_sheet.get_all_records()
-                room_df2 = pd.DataFrame(room_data)
-
-                match = room_df2[
-                    (room_df2["pg_name"].astype(str) == str(row["pg_name"])) &
-                    (room_df2["room_no"].astype(str) == str(row["room_no"]))
-                ]
-
-                if not match.empty:
-                    idx = match.index[0]
-                    new_beds = int(match.iloc[0]["available_beds"]) + 1
-                    room_sheet.update(f"E{idx+2}", [[new_beds]])
-
-                booking_sheet.delete_rows(i + 2)
-
-                st.success("Cancelled")
-                st.cache_data.clear()
-                st.rerun()
 
         st.divider()
 
