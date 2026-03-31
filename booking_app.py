@@ -28,12 +28,11 @@ room_sheet = sheet.worksheet("Sheet1")
 # ---------------- LOAD DATA ----------------
 @st.cache_data(ttl=10)
 def load_data():
-    df = pd.DataFrame(room_sheet.get_all_records())
-    return df
+    return pd.DataFrame(room_sheet.get_all_records())
 
 room_df = load_data()
 
-# ---------------- SAFE JSON ----------------
+# ---------------- SAFE JSON PARSE ----------------
 def parse_json_safe(x):
     try:
         return json.loads(x)[0]
@@ -53,7 +52,7 @@ def get_sharing(x):
 
 room_df["sharing"] = room_df["parsed"].apply(get_sharing)
 
-# ---------------- USER ----------------
+# ---------------- USER DETAILS ----------------
 st.subheader("👤 Your Details")
 name = st.text_input("Name")
 phone = st.text_input("Phone")
@@ -83,112 +82,125 @@ room_type = st.selectbox(
 
 cleanliness_pref = st.slider("Cleanliness Expectation", 1, 10, 7)
 
-# ---------------- AUTO MATCH (NO BUTTON) ----------------
-df = room_df.copy()
+# ---------------- FIND BUTTON ----------------
+if st.button("🔍 Find Best PGs"):
 
-# HARD FILTER
-if "gender" in df.columns:
-    df = df[df["gender"] == gender]
+    df = room_df.copy()
 
-# ---------------- SCORING ----------------
-def calculate_score(row):
+    # FIX PRICE TYPE
+    df["price"] = pd.to_numeric(df["price"], errors="coerce").fillna(0)
 
-    score = 0
+    # HARD FILTER
+    if "gender" in df.columns:
+        df = df[df["gender"] == gender]
 
-    # Budget
-    if row["price"] <= budget:
-        score += 30
-    else:
-        score += 10
+    # ---------------- SCORING ----------------
+    def calculate_score(row):
 
-    # Location
-    if location.lower() in str(row["location"]).lower():
-        score += 25
-    else:
-        score += 10
+        score = 0
+        price = row["price"]
 
-    # Cleanliness
-    try:
-        clean = int(row.get("cleanliness", 5))
-        diff = abs(clean - cleanliness_pref)
-        score += max(0, 15 - diff*2)
-    except:
-        pass
-
-    # Food
-    if str(row.get("food_type","")).lower() == food_type.lower():
-        score += 10
-
-    # Crowd
-    if str(row.get("crowd","")).lower() == crowd.lower():
-        score += 10
-
-    # Room type
-    if str(row.get("room_type","")).lower() == room_type.lower():
-        score += 10
-
-    return score
-
-df["score"] = df.apply(calculate_score, axis=1)
-
-df = df.sort_values(by="score", ascending=False).head(3)
-
-# ---------------- DISPLAY ----------------
-st.subheader("🏆 Top Matches For You")
-
-if df.empty:
-    st.error("No PGs found ❌")
-else:
-
-    def explain(row):
-        text = ""
-
-        if row["price"] <= budget:
-            text += "✅ Perfect budget match. "
+        # 💰 Budget Logic (SMART)
+        if price <= budget:
+            score += 30
         else:
-            text += "⚠️ Slightly above budget. "
-
-        if location.lower() in str(row["location"]).lower():
-            text += "📍 Exact location match. "
-        else:
-            text += "📍 Nearby location. "
-
-        if str(row.get("food_type","")).lower() == food_type.lower():
-            text += "🍽 Food matches your preference. "
-
-        if str(row.get("crowd","")).lower() == crowd.lower():
-            text += "👥 Crowd suits your lifestyle. "
-
-        try:
-            clean = int(row.get("cleanliness",5))
-            if clean >= cleanliness_pref:
-                text += "🧼 Cleanliness is good. "
+            diff = price - budget
+            if diff <= 1000:
+                score += 20
+            elif diff <= 2000:
+                score += 10
             else:
-                text += "🧼 Cleanliness slightly lower. "
+                score += 5
+
+        # 📍 Location
+        if location.lower() in str(row["location"]).lower():
+            score += 25
+        else:
+            score += 10
+
+        # 🧼 Cleanliness
+        try:
+            clean = int(row.get("cleanliness", 5))
+            diff = abs(clean - cleanliness_pref)
+            score += max(0, 15 - diff*2)
         except:
-            pass
+            score += 5
 
-        return text
+        # 🍽 Food
+        if str(row.get("food_type","")).lower() == food_type.lower():
+            score += 10
 
-    for _, row in df.iterrows():
+        # 👥 Crowd
+        if str(row.get("crowd","")).lower() == crowd.lower():
+            score += 10
 
-        match_percent = int(row["score"])
+        # 🛏 Room Type
+        if str(row.get("room_type","")).lower() == room_type.lower():
+            score += 10
 
-        st.markdown(f"## 🏠 {row['pg_name']} — {match_percent}% Match")
+        return score
 
-        st.success("Why this match?")
-        st.write(explain(row))
+    df["score"] = df.apply(calculate_score, axis=1)
 
-        st.info("Why choose this PG?")
-        st.write("✔ Good balance of price & features")
-        st.write("✔ Matches most of your preferences")
+    # SORT TOP 3
+    df = df.sort_values(by="score", ascending=False).head(3)
 
-        st.warning("Things to consider:")
+    # ---------------- DISPLAY ----------------
+    st.subheader("🏆 Top Matches For You")
 
-        if row["price"] > budget:
-            st.write("• Slightly above budget")
+    if df.empty:
+        st.error("No PGs found ❌")
 
-        if location.lower() not in str(row["location"]).lower():
-            st.write("• Different location")
+    else:
 
-        st.divider()
+        def explain(row):
+
+            text = ""
+
+            if row["price"] <= budget:
+                text += "✅ Perfect budget match. "
+            else:
+                text += f"⚠️ ₹{int(row['price'] - budget)} above budget. "
+
+            if location.lower() in str(row["location"]).lower():
+                text += "📍 Exact location match. "
+
+            if str(row.get("food_type","")).lower() == food_type.lower():
+                text += "🍽 Food matches. "
+
+            if str(row.get("crowd","")).lower() == crowd.lower():
+                text += "👥 Good crowd match. "
+
+            try:
+                clean = int(row.get("cleanliness",5))
+                if clean >= cleanliness_pref:
+                    text += "🧼 Clean. "
+                else:
+                    text += "🧼 Average cleanliness. "
+            except:
+                pass
+
+            return text
+
+        for _, row in df.iterrows():
+
+            match_percent = int(row["score"])
+
+            st.markdown(f"## 🏠 {row['pg_name']} — {match_percent}% Match")
+
+            st.success("Why this match?")
+            st.write(explain(row))
+
+            st.info("Why choose this PG?")
+            st.write("✔ Good balance of price & features")
+            st.write("✔ Matches most of your needs")
+
+            st.warning("Things to consider:")
+
+            if row["price"] > budget:
+                st.write("• Slightly expensive")
+
+            if location.lower() not in str(row["location"]).lower():
+                st.write("• Different location")
+
+            st.divider()
