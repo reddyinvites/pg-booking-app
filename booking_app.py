@@ -48,20 +48,13 @@ if password != "1234":
 st.success("✅ Logged in")
 
 # -----------------------
-# ☰ HAMBURGER MENU
+# ☰ MENU
 # -----------------------
 st.sidebar.title("☰ Menu")
-
-menu = st.sidebar.radio(
-    "Go to",
-    ["➕ Add PG", "📋 Manage PGs", "🖼 Gallery"]
-)
-
-st.sidebar.markdown("---")
-st.sidebar.caption("PG Admin Panel 🚀")
+menu = st.sidebar.radio("Go to", ["➕ Add PG", "📋 Manage PGs", "🖼 Gallery"])
 
 # -----------------------
-# ➕ ADD PG (YOUR SAME CODE)
+# ADD PG
 # -----------------------
 if menu == "➕ Add PG":
 
@@ -84,9 +77,6 @@ if menu == "➕ Add PG":
 
     verified = st.selectbox("Verified", ["Yes", "No"])
 
-    # -----------------------
-    # CATEGORY UPLOAD
-    # -----------------------
     categories = ["room", "bath", "food", "dining", "storage", "outside"]
 
     category_inputs = {}
@@ -99,9 +89,6 @@ if menu == "➕ Add PG":
     st.subheader("🎥 Videos")
     video_files = st.file_uploader("videos", accept_multiple_files=True)
 
-    # -----------------------
-    # SAVE
-    # -----------------------
     if st.button("💾 Save PG"):
 
         # ❌ DUPLICATE CHECK
@@ -140,12 +127,12 @@ if menu == "➕ Add PG":
 
         st.success("✅ Saved Successfully")
 
-        # 🔄 CLEAR FORM
+        # CLEAR FORM
         st.session_state.clear()
         st.rerun()
 
 # -----------------------
-# 📋 MANAGE PGs (SAME)
+# MANAGE PGs
 # -----------------------
 if menu == "📋 Manage PGs":
 
@@ -177,7 +164,7 @@ if menu == "📋 Manage PGs":
         st.divider()
 
 # -----------------------
-# 🖼 GALLERY (FIXED)
+# GALLERY (FIXED SAFE)
 # -----------------------
 if menu == "🖼 Gallery":
 
@@ -193,17 +180,29 @@ if menu == "🖼 Gallery":
         images = str(pg.get("images", "")).split("|")
 
         for block in images:
+
             if ":" in block:
-                cat, urls = block.split(":")
-                urls = urls.split(",")
+                try:
+                    cat, urls = block.split(":", 1)
+                    urls = urls.split(",")
 
-                st.markdown(f"### 🔹 {cat.upper()}")
+                    st.markdown(f"### 🔹 {cat.upper()}")
 
-                cols = st.columns(3)
-                for i, img in enumerate(urls):
-                    if img.startswith("http"):
-                        cols[i % 3].image(img, use_container_width=True)
+                    cols = st.columns(3)
 
+                    for i, img in enumerate(urls):
+                        if img.startswith("http"):
+                            cols[i % 3].image(img, use_container_width=True)
+
+                except:
+                    continue
+
+            else:
+                # fallback for old data
+                if block.startswith("http"):
+                    st.image(block, use_container_width=True)
+
+        # VIDEOS
         videos = str(pg.get("videos", "")).split("|")
 
         valid_videos = [v for v in videos if v.startswith("http")]
