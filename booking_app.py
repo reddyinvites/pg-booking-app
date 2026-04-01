@@ -7,7 +7,7 @@ import cloudinary.uploader
 st.set_page_config(page_title="PG Admin", layout="wide")
 
 # -----------------------
-# CONFIG
+# CLOUDINARY CONFIG
 # -----------------------
 cloudinary.config(
     cloud_name=st.secrets["cloudinary"]["cloud_name"],
@@ -15,6 +15,9 @@ cloudinary.config(
     api_secret=st.secrets["cloudinary"]["api_secret"]
 )
 
+# -----------------------
+# GOOGLE SHEETS CONNECT
+# -----------------------
 scope = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
@@ -27,29 +30,29 @@ creds = Credentials.from_service_account_info(gcp_info, scopes=scope)
 client = gspread.authorize(creds)
 
 # -----------------------
-# SHEETS
+# OPEN SHEETS
 # -----------------------
 SPREADSHEET_ID = "1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q"
 
 sheet = client.open_by_key(SPREADSHEET_ID)
 
-pg_data_sheet = sheet.worksheet("Sheet1")        # real data
-verified_sheet = sheet.worksheet("verified_pg")  # save here
+pg_data_sheet = sheet.worksheet("Sheet1")        # PG DATA
+verified_sheet = sheet.worksheet("verified_pg")  # VERIFIED DATA
 
 # -----------------------
 # LOGIN
 # -----------------------
-st.title("👨‍💼 Admin")
+st.title("👨‍💼 Admin Panel")
 
 password = st.text_input("Password", type="password")
 
 if password != "1234":
     st.stop()
 
-st.success("Logged in")
+st.success("✅ Logged in")
 
 # -----------------------
-# READ PG DATA
+# LOAD PG DATA
 # -----------------------
 pg_rows = pg_data_sheet.get_all_values()
 
@@ -81,37 +84,27 @@ st.text_input("Location", value=location, disabled=True)
 verified = st.selectbox("Verified", ["Yes", "No"])
 
 # -----------------------
-# UPLOAD
+# UPLOAD FILES
 # -----------------------
 st.subheader("📸 Upload Images")
-image_files = st.file_uploader(
-    "Images",
-    type=["jpg", "jpeg", "png"],
-    accept_multiple_files=True
-)
+image_files = st.file_uploader("Images", type=["jpg","png","jpeg"], accept_multiple_files=True)
 
 st.subheader("🎥 Upload Videos")
-video_files = st.file_uploader(
-    "Videos",
-    type=["mp4", "mov", "avi"],
-    accept_multiple_files=True
-)
+video_files = st.file_uploader("Videos", type=["mp4","mov","avi"], accept_multiple_files=True)
 
 # -----------------------
-# SAVE (FIXED)
+# SAVE DATA
 # -----------------------
 if st.button("💾 Save PG"):
 
     image_urls = []
     video_urls = []
 
-    # upload images
     if image_files:
         for file in image_files:
             res = cloudinary.uploader.upload(file)
             image_urls.append(res["secure_url"])
 
-    # upload videos
     if video_files:
         for file in video_files:
             res = cloudinary.uploader.upload(file, resource_type="video")
@@ -121,17 +114,17 @@ if st.button("💾 Save PG"):
         name,
         location,
         verified,
-        "|".join(image_urls) if image_urls else "",
-        "|".join(video_urls) if video_urls else ""
+        "|".join(image_urls),
+        "|".join(video_urls)
     ])
 
     st.success("✅ Saved Successfully")
     st.rerun()
 
 # -----------------------
-# MANAGE PGS
+# SHOW VERIFIED PGS
 # -----------------------
-st.header("📋 Manage PGs")
+st.header("📋 Verified PGs")
 
 data = verified_sheet.get_all_records()
 
@@ -145,24 +138,15 @@ for i, pg in enumerate(data):
     else:
         st.warning("❌ Not Verified")
 
-    col1, col2 = st.columns(2)
-
     # DELETE
-    if col1.button("❌ Delete", key=f"delete{i}"):
+    if st.button("❌ Delete", key=f"del{i}"):
         verified_sheet.delete_rows(i + 2)
         st.rerun()
 
-    # TOGGLE VERIFY (DISABLE IF VERIFIED)
-    if pg.get("verified") != "Yes":
-        if col2.button("🔄 Toggle Verify", key=f"toggle{i}"):
-            verified_sheet.update_cell(i + 2, 3, "Yes")
-            st.rerun()
-
     # -----------------------
-    # GALLERY (GRID UI)
+    # GALLERY
     # -----------------------
     images = str(pg.get("images", "")).split("|")
-
     valid_images = [img for img in images if img.startswith("http")]
 
     if valid_images:
@@ -172,7 +156,6 @@ for i, pg in enumerate(data):
             cols[j % 3].image(img, use_container_width=True)
 
     videos = str(pg.get("videos", "")).split("|")
-
     valid_videos = [v for v in videos if v.startswith("http")]
 
     if valid_videos:
