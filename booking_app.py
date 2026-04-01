@@ -26,8 +26,12 @@ gcp_info["private_key"] = gcp_info["private_key"].replace("\\n", "\n")
 creds = Credentials.from_service_account_info(gcp_info, scopes=scope)
 client = gspread.authorize(creds)
 
-# ✅ SHEETS
+# -----------------------
+# SHEETS
+# -----------------------
 verified_sheet = client.open_by_key("1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q").sheet1
+
+# 👉 CHANGE THIS (pg_data sheet ID)
 pg_data_sheet = client.open_by_key("1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q").worksheet("Sheet1")
 
 # -----------------------
@@ -65,7 +69,7 @@ if st.session_state.page == "home":
         st.rerun()
 
 # -----------------------
-# DETAIL PAGE (GALLERY)
+# DETAIL (GALLERY)
 # -----------------------
 elif st.session_state.page == "detail":
 
@@ -113,22 +117,24 @@ elif st.session_state.page == "admin":
     pg_data = pg_data_sheet.get_all_values()
 
     options = []
+
     for row in pg_data[1:]:
         try:
-            name = row[0].strip()
-            location = row[1].strip()
+            name = row[1].strip()      # pg_name (B column)
+            location = row[2].strip()  # location (C column)
 
             if name and location:
                 options.append(f"{name} | {location}")
         except:
             continue
 
+    if not options:
+        st.error("❌ No PG data found")
+        st.stop()
+
     selected = st.selectbox("Select PG", options)
 
-    if selected:
-        name, location = selected.split(" | ")
-    else:
-        name, location = "", ""
+    name, location = selected.split(" | ")
 
     st.text_input("Name", value=name, disabled=True)
     st.text_input("Location", value=location, disabled=True)
@@ -139,7 +145,7 @@ elif st.session_state.page == "admin":
     # UPLOADS
     # -----------------------
     st.subheader("📸 Images")
-    images_files = st.file_uploader("Upload Images", accept_multiple_files=True)
+    image_files = st.file_uploader("Upload Images", accept_multiple_files=True)
 
     st.subheader("🎥 Videos")
     video_files = st.file_uploader("Upload Videos", accept_multiple_files=True)
@@ -147,14 +153,14 @@ elif st.session_state.page == "admin":
     image_urls = []
     video_urls = []
 
-    if images_files:
-        for f in images_files:
-            res = cloudinary.uploader.upload(f)
+    if image_files:
+        for file in image_files:
+            res = cloudinary.uploader.upload(file)
             image_urls.append(res["secure_url"])
 
     if video_files:
-        for f in video_files:
-            res = cloudinary.uploader.upload(f, resource_type="video")
+        for file in video_files:
+            res = cloudinary.uploader.upload(file, resource_type="video")
             video_urls.append(res["secure_url"])
 
     # -----------------------
@@ -170,7 +176,7 @@ elif st.session_state.page == "admin":
             "|".join(video_urls)
         ])
 
-        st.success("Saved successfully")
+        st.success("PG Saved ✅")
         st.rerun()
 
     st.divider()
@@ -199,7 +205,7 @@ elif st.session_state.page == "admin":
             verified_sheet.delete_rows(i + 2)
             st.rerun()
 
-        # TOGGLE (DISABLED IF VERIFIED)
+        # TOGGLE (DISABLE IF VERIFIED)
         if pg.get("verified") != "Yes":
             if col2.button("🔄 Toggle Verify", key=f"t{i}"):
                 verified_sheet.update_cell(i + 2, 3, "Yes")
