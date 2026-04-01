@@ -4,7 +4,7 @@ from google.oauth2.service_account import Credentials
 import cloudinary
 import cloudinary.uploader
 
-st.set_page_config(page_title="Verified PGs", layout="wide")
+st.set_page_config(page_title="PG App", layout="wide")
 
 # -----------------------
 # CONFIG
@@ -27,13 +27,10 @@ creds = Credentials.from_service_account_info(gcp_info, scopes=scope)
 client = gspread.authorize(creds)
 
 # -----------------------
-# SHEETS (FIXED)
+# SHEET (ONLY ONE)
 # -----------------------
-SPREADSHEET_ID = "1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q"
-sheet = client.open_by_key(SPREADSHEET_ID)
-
-pg_data_sheet = sheet.worksheet("Sheet1")        # READ
-verified_sheet = sheet.worksheet("verified_pg")  # SAVE
+sheet = client.open_by_key("1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q")
+pg_sheet = sheet.sheet1   # only Sheet1
 
 # -----------------------
 # SESSION
@@ -46,20 +43,28 @@ if "page" not in st.session_state:
 # -----------------------
 if st.session_state.page == "home":
 
-    st.title("🏠 Verified PGs")
+    st.title("🏠 PG List")
 
-    data = verified_sheet.get_all_records()
+    data = pg_sheet.get_all_values()
+    rows = data[1:]
 
-    for i, pg in enumerate(data):
+    for i, row in enumerate(rows):
 
-        st.subheader(f"🏠 {pg.get('name','')}")
-        st.write(f"📍 {pg.get('location','')}")
+        if len(row) < 3:
+            continue
 
-        if pg.get("verified") == "Yes":
+        name = row[1]
+        location = row[2]
+        verified = row[3] if len(row) > 3 else "No"
+
+        st.subheader(f"🏠 {name}")
+        st.write(f"📍 {location}")
+
+        if verified == "Yes":
             st.success("✅ Verified")
 
-        if st.button(f"View {pg.get('name')}", key=f"view{i}"):
-            st.session_state.pg = pg
+        if st.button(f"View {name}", key=f"view{i}"):
+            st.session_state.pg_index = i + 2
             st.session_state.page = "detail"
             st.rerun()
 
@@ -70,27 +75,25 @@ if st.session_state.page == "home":
         st.rerun()
 
 # -----------------------
-# DETAIL PAGE
+# DETAIL
 # -----------------------
 elif st.session_state.page == "detail":
 
-    pg = st.session_state.pg
+    row = pg_sheet.row_values(st.session_state.pg_index)
 
-    st.title(pg.get("name"))
-    st.write(f"📍 {pg.get('location')}")
+    st.title(row[1])
+    st.write(f"📍 {row[2]}")
 
-    st.subheader("📸 Gallery")
+    images = row[4].split("|") if len(row) > 4 else []
 
-    images = str(pg.get("images", "")).split("|")
-
-    cols = st.columns(2)
-    for i, img in enumerate(images):
+    st.subheader("📸 Images")
+    for img in images:
         if img.startswith("http"):
-            cols[i % 2].image(img, use_container_width=True)
+            st.image(img)
+
+    videos = row[5].split("|") if len(row) > 5 else []
 
     st.subheader("🎥 Videos")
-
-    videos = str(pg.get("videos", "")).split("|")
     for v in videos:
         if v.startswith("http"):
             st.video(v)
@@ -106,110 +109,51 @@ elif st.session_state.page == "admin":
 
     st.title("👨‍💼 Admin")
 
-    password = st.text_input("Password", type="password")
-    if password != "1234":
+    if st.text_input("Password", type="password") != "1234":
         st.stop()
 
     st.success("Logged in")
 
-    # 🔄 REFRESH
-    if st.button("🔄 Refresh"):
-        st.rerun()
-
-    # -----------------------
-    # DROPDOWN (FIXED)
-    # -----------------------
-    pg_data = pg_data_sheet.get_all_values()
+    data = pg_sheet.get_all_values()
+    rows = data[1:]
 
     options = []
 
-    for row in pg_data[1:]:
+    for i, row in enumerate(rows):
         if len(row) >= 3:
-            name = row[1].strip()
-            location = row[2].strip()
-
-            if name and location:
-                options.append(f"{name} | {location}")
-
-    if not options:
-        st.error("❌ No PG data found (Check sheet sharing)")
-        st.stop()
+            options.append(f"{i+2} | {row[1]} | {row[2]}")
 
     selected = st.selectbox("Select PG", options)
 
-    name, location = selected.split(" | ")
-
-    st.text_input("Name", value=name, disabled=True)
-    st.text_input("Location", value=location, disabled=True)
+    index = int(selected.split(" | ")[0])
 
     verified = st.selectbox("Verified", ["Yes", "No"])
 
-    # -----------------------
-    # UPLOAD
-    # -----------------------
-    st.subheader("📸 Images")
     image_files = st.file_uploader("Upload Images", accept_multiple_files=True)
-
-    st.subheader("🎥 Videos")
     video_files = st.file_uploader("Upload Videos", accept_multiple_files=True)
 
     image_urls = []
     video_urls = []
 
     if image_files:
-        for file in image_files:
-            res = cloudinary.uploader.upload(file)
+        for f in image_files:
+            res = cloudinary.uploader.upload(f)
             image_urls.append(res["secure_url"])
 
     if video_files:
-        for file in video_files:
-            res = cloudinary.uploader.upload(file, resource_type="video")
+        for f in video_files:
+            res = cloudinary.uploader.upload(f, resource_type="video")
             video_urls.append(res["secure_url"])
 
-    # -----------------------
-    # SAVE (FIXED)
-    # -----------------------
-    if st.button("Save PG"):
+    if st.button("Save"):
 
-        verified_sheet.append_row([
-            name,
-            location,
-            verified,
-            "|".join(image_urls),
-            "|".join(video_urls)
-        ])
+        if image_urls:
+            pg_sheet.update_cell(index, 5, "|".join(image_urls))
 
-        st.success("✅ Saved Successfully")
+        if video_urls:
+            pg_sheet.update_cell(index, 6, "|".join(video_urls))
+
+        pg_sheet.update_cell(index, 4, verified)
+
+        st.success("Updated ✅")
         st.rerun()
-
-    st.divider()
-
-    # -----------------------
-    # MANAGE
-    # -----------------------
-    st.subheader("📋 Manage PGs")
-
-    data = verified_sheet.get_all_records()
-
-    for i, pg in enumerate(data):
-
-        st.markdown(f"### 🏠 {pg.get('name')}")
-        st.write(f"📍 {pg.get('location')}")
-
-        if pg.get("verified") == "Yes":
-            st.success("✅ Verified")
-        else:
-            st.warning("❌ Not Verified")
-
-        col1, col2 = st.columns(2)
-
-        if col1.button("❌ Delete", key=f"d{i}"):
-            verified_sheet.delete_rows(i + 2)
-            st.rerun()
-
-        if pg.get("verified") != "Yes":
-            if col2.button("🔄 Toggle Verify", key=f"t{i}"):
-                verified_sheet.update_cell(i + 2, 3, "Yes")
-                st.rerun()
-
-        st.divider()
