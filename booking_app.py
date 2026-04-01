@@ -27,13 +27,13 @@ creds = Credentials.from_service_account_info(gcp_info, scopes=scope)
 client = gspread.authorize(creds)
 
 # -----------------------
-# SHEET CONNECT
+# SHEETS (FIXED)
 # -----------------------
 SPREADSHEET_ID = "1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q"
 sheet = client.open_by_key(SPREADSHEET_ID)
 
-verified_sheet = sheet.get_worksheet(0)   # Verified PGs
-pg_data_sheet = sheet.get_worksheet(0)    # PG Data (same for now)
+pg_data_sheet = sheet.worksheet("Sheet1")        # READ
+verified_sheet = sheet.worksheet("verified_pg")  # SAVE
 
 # -----------------------
 # SESSION
@@ -82,8 +82,8 @@ elif st.session_state.page == "detail":
     st.subheader("📸 Gallery")
 
     images = str(pg.get("images", "")).split("|")
-    cols = st.columns(2)
 
+    cols = st.columns(2)
     for i, img in enumerate(images):
         if img.startswith("http"):
             cols[i % 2].image(img, use_container_width=True)
@@ -112,30 +112,26 @@ elif st.session_state.page == "admin":
 
     st.success("Logged in")
 
-    # 🔄 REFRESH BUTTON
-    if st.button("🔄 Refresh Data"):
+    # 🔄 REFRESH
+    if st.button("🔄 Refresh"):
         st.rerun()
 
     # -----------------------
-    # DEBUG (IMPORTANT)
+    # DROPDOWN (FIXED)
     # -----------------------
     pg_data = pg_data_sheet.get_all_values()
-    st.write("DEBUG DATA:", pg_data)  # remove later
 
-    # -----------------------
-    # DROPDOWN
-    # -----------------------
     options = []
 
     for row in pg_data[1:]:
         if len(row) >= 3:
-            name = str(row[1]).strip()
-            location = str(row[2]).strip()
+            name = row[1].strip()
+            location = row[2].strip()
 
             if name and location:
                 options.append(f"{name} | {location}")
 
-    if len(options) == 0:
+    if not options:
         st.error("❌ No PG data found (Check sheet sharing)")
         st.stop()
 
@@ -171,23 +167,20 @@ elif st.session_state.page == "admin":
             video_urls.append(res["secure_url"])
 
     # -----------------------
-    # SAVE
+    # SAVE (FIXED)
     # -----------------------
     if st.button("Save PG"):
 
-        if not name:
-            st.error("❌ No PG selected")
-        else:
-            verified_sheet.append_row([
-                name,
-                location,
-                verified,
-                "|".join(image_urls),
-                "|".join(video_urls)
-            ])
+        verified_sheet.append_row([
+            name,
+            location,
+            verified,
+            "|".join(image_urls),
+            "|".join(video_urls)
+        ])
 
-            st.success("✅ Saved Successfully")
-            st.rerun()
+        st.success("✅ Saved Successfully")
+        st.rerun()
 
     st.divider()
 
@@ -215,7 +208,7 @@ elif st.session_state.page == "admin":
             st.rerun()
 
         if pg.get("verified") != "Yes":
-            if col2.button("🔄 Verify", key=f"t{i}"):
+            if col2.button("🔄 Toggle Verify", key=f"t{i}"):
                 verified_sheet.update_cell(i + 2, 3, "Yes")
                 st.rerun()
 
