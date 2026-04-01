@@ -27,13 +27,13 @@ creds = Credentials.from_service_account_info(gcp_info, scopes=scope)
 client = gspread.authorize(creds)
 
 # -----------------------
-# SHEETS (FINAL FIX)
+# SHEETS
 # -----------------------
 PG_DATA_ID = "1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q"
 VERIFIED_ID = "191Fg2-jLtpvziqFrUdQNV2ki1iXYe_fdTGYv3_Tm7wA"
 
-pg_sheet = client.open_by_key(PG_DATA_ID).worksheet("Sheet1")          # pg_data file
-verified_sheet = client.open_by_key(VERIFIED_ID).worksheet("verified_pg")  # ✅ FIXED
+pg_sheet = client.open_by_key(PG_DATA_ID).worksheet("Sheet1")
+verified_sheet = client.open_by_key(VERIFIED_ID).worksheet("verified_pg")
 
 # -----------------------
 # LOGIN
@@ -80,11 +80,20 @@ st.text_input("Location", value=location, disabled=True)
 verified = st.selectbox("Verified", ["Yes", "No"])
 
 # -----------------------
-# UPLOAD
+# CATEGORY UPLOAD
 # -----------------------
-st.subheader("📸 Upload Images")
-image_files = st.file_uploader("Images", accept_multiple_files=True)
+st.subheader("📸 Upload by Category")
 
+room_files = st.file_uploader("🛏 Room", accept_multiple_files=True, key="room")
+bath_files = st.file_uploader("🚿 Bath", accept_multiple_files=True, key="bath")
+food_files = st.file_uploader("🍛 Food", accept_multiple_files=True, key="food")
+dining_files = st.file_uploader("🍽 Dining", accept_multiple_files=True, key="dining")
+storage_files = st.file_uploader("🗄 Storage", accept_multiple_files=True, key="storage")
+outside_files = st.file_uploader("🏡 Outside", accept_multiple_files=True, key="outside")
+
+# -----------------------
+# VIDEO UPLOAD
+# -----------------------
 st.subheader("🎥 Upload Videos")
 video_files = st.file_uploader("Videos", accept_multiple_files=True)
 
@@ -93,16 +102,30 @@ video_files = st.file_uploader("Videos", accept_multiple_files=True)
 # -----------------------
 if st.button("💾 Save PG"):
 
-    image_urls = []
+    def upload_and_tag(files, category):
+        urls = []
+        if files:
+            for f in files:
+                res = cloudinary.uploader.upload(f)
+                urls.append(res["secure_url"])
+        return f"{category}:" + ",".join(urls) if urls else ""
+
+    parts = []
+
+    for data in [
+        upload_and_tag(room_files, "room"),
+        upload_and_tag(bath_files, "bath"),
+        upload_and_tag(food_files, "food"),
+        upload_and_tag(dining_files, "dining"),
+        upload_and_tag(storage_files, "storage"),
+        upload_and_tag(outside_files, "outside"),
+    ]:
+        if data:
+            parts.append(data)
+
+    final_images = "|".join(parts)
+
     video_urls = []
-
-    # Upload images
-    if image_files:
-        for file in image_files:
-            res = cloudinary.uploader.upload(file)
-            image_urls.append(res["secure_url"])
-
-    # Upload videos
     if video_files:
         for file in video_files:
             res = cloudinary.uploader.upload(file, resource_type="video")
@@ -112,66 +135,79 @@ if st.button("💾 Save PG"):
         name,
         location,
         verified,
-        "|".join(image_urls),
+        final_images,
         "|".join(video_urls)
     ])
 
     st.success("✅ Saved Successfully")
+    st.session_state.clear()
     st.rerun()
 
 # -----------------------
-# MANAGE PGs
+# TABS
 # -----------------------
-st.header("📋 Manage PGs")
+tab1, tab2 = st.tabs(["📋 PG List", "🖼 Gallery"])
 
-data = verified_sheet.get_all_records()
+# -----------------------
+# TAB 1
+# -----------------------
+with tab1:
+    st.header("📋 Manage PGs")
 
-for i, pg in enumerate(data):
+    data = verified_sheet.get_all_records()
 
-    st.subheader(f"🏠 {pg.get('name')}")
-    st.write(f"📍 {pg.get('location')}")
+    for i, pg in enumerate(data):
 
-    if pg.get("verified") == "Yes":
-        st.success("✅ Verified")
-    else:
-        st.warning("❌ Not Verified")
+        st.subheader(f"🏠 {pg.get('name')}")
+        st.write(f"📍 {pg.get('location')}")
 
-    col1, col2 = st.columns(2)
+        if pg.get("verified") == "Yes":
+            st.success("✅ Verified")
+        else:
+            st.warning("❌ Not Verified")
 
-    # DELETE
-    if col1.button("❌ Delete", key=f"d{i}"):
-        verified_sheet.delete_rows(i + 2)
-        st.rerun()
+        col1, col2 = st.columns(2)
 
-    # VERIFY
-    if pg.get("verified") != "Yes":
-        if col2.button("🔄 Verify", key=f"v{i}"):
-            verified_sheet.update_cell(i + 2, 3, "Yes")
+        if col1.button("❌ Delete", key=f"d{i}"):
+            verified_sheet.delete_rows(i + 2)
             st.rerun()
 
-    # -----------------------
-    # IMAGES
-    # -----------------------
-    images = str(pg.get("images", "")).split("|")
+        if pg.get("verified") != "Yes":
+            if col2.button("🔄 Verify", key=f"v{i}"):
+                verified_sheet.update_cell(i + 2, 3, "Yes")
+                st.rerun()
 
-    valid_images = [img for img in images if img.startswith("http")]
+        st.divider()
 
-    if valid_images:
-        st.write("📸 Images")
-        cols = st.columns(3)
-        for j, img in enumerate(valid_images):
-            cols[j % 3].image(img, use_container_width=True)
+# -----------------------
+# TAB 2 (GALLERY)
+# -----------------------
+with tab2:
+    st.header("🖼 PG Gallery")
 
-    # -----------------------
-    # VIDEOS
-    # -----------------------
-    videos = str(pg.get("videos", "")).split("|")
+    data = verified_sheet.get_all_records()
 
-    valid_videos = [v for v in videos if v.startswith("http")]
+    for pg in data:
+        st.subheader(pg.get("name"))
 
-    if valid_videos:
-        st.write("🎥 Videos")
-        for v in valid_videos:
-            st.video(v)
+        images_raw = str(pg.get("images", "")).split("|")
 
-    st.divider()
+        for block in images_raw:
+            if ":" in block:
+                category, urls = block.split(":")
+                urls = urls.split(",")
+
+                st.write(f"### {category.upper()}")
+
+                cols = st.columns(3)
+                for i, img in enumerate(urls):
+                    if img.startswith("http"):
+                        cols[i % 3].image(img, use_container_width=True)
+
+        videos = str(pg.get("videos", "")).split("|")
+
+        for v in videos:
+            if v.startswith("http"):
+                st.video(v)
+
+        st.divider()
