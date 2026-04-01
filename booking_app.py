@@ -8,7 +8,6 @@ import cloudinary.uploader
 # CONFIG
 # -----------------------
 st.set_page_config(page_title="Verified PGs", layout="wide")
-st.cache_data.clear()
 
 cloudinary.config(
     cloud_name=st.secrets["cloudinary"]["cloud_name"],
@@ -37,7 +36,7 @@ if "page" not in st.session_state:
     st.session_state.page = "home"
 
 # -----------------------
-# HELPER
+# IMAGE URL
 # -----------------------
 def get_img_url(public_id):
     return f"https://res.cloudinary.com/{st.secrets['cloudinary']['cloud_name']}/image/upload/{public_id}.jpg"
@@ -103,7 +102,7 @@ if st.session_state.page == "home":
         st.rerun()
 
 # -----------------------
-# DETAIL PAGE (UPDATED UI)
+# DETAIL PAGE (🔥 FIXED GRID UI)
 # -----------------------
 elif st.session_state.page == "detail":
 
@@ -121,7 +120,7 @@ elif st.session_state.page == "detail":
     if verified == "Yes":
         st.success("✅ Verified by Us")
 
-    st.markdown("### 📸 Gallery")
+    st.markdown("## 📸 Gallery")
     st.divider()
 
     sections = images.split("|")
@@ -134,6 +133,7 @@ elif st.session_state.page == "detail":
         if img_list:
             st.subheader(titles[idx])
 
+            # 🔥 GRID (SIDE-BY-SIDE)
             cols = st.columns(3)
 
             for i, img in enumerate(img_list):
@@ -142,6 +142,7 @@ elif st.session_state.page == "detail":
                     use_container_width=True
                 )
 
+    # 🎥 VIDEOS
     video_list = [v for v in videos.split(",") if v.strip()]
 
     if video_list:
@@ -219,6 +220,9 @@ elif st.session_state.page == "admin":
         st.success("✅ Saved Successfully!")
         st.rerun()
 
+    # -----------------------
+    # MANAGE
+    # -----------------------
     st.subheader("📋 Manage PGs")
 
     data = pg_sheet.get_all_values()
