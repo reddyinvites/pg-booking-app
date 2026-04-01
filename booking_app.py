@@ -27,9 +27,6 @@ gcp_info["private_key"] = gcp_info["private_key"].replace("\\n", "\n")
 creds = Credentials.from_service_account_info(gcp_info, scopes=scope)
 client = gspread.authorize(creds)
 
-# -----------------------
-# SHEET
-# -----------------------
 sheet = client.open("verified_pg")
 pg_sheet = sheet.sheet1
 
@@ -40,19 +37,19 @@ if "page" not in st.session_state:
     st.session_state.page = "home"
 
 # -----------------------
-# HELPER (SHORT URL)
+# HELPER
 # -----------------------
 def get_img_url(public_id):
     return f"https://res.cloudinary.com/{st.secrets['cloudinary']['cloud_name']}/image/upload/{public_id}.jpg"
 
 # -----------------------
-# UPLOAD FUNCTION
+# UPLOAD
 # -----------------------
 def upload(files, folder="pg_images", video=False):
     urls = []
 
     if files:
-        for i, f in enumerate(files):
+        for f in files:
             try:
                 res = cloudinary.uploader.upload(
                     f,
@@ -63,7 +60,7 @@ def upload(files, folder="pg_images", video=False):
                 if video:
                     urls.append(res["secure_url"])
                 else:
-                    urls.append(res["public_id"])  # short
+                    urls.append(res["public_id"])
 
             except Exception as e:
                 st.error(f"Upload failed: {e}")
@@ -106,7 +103,7 @@ if st.session_state.page == "home":
         st.rerun()
 
 # -----------------------
-# DETAIL PAGE
+# DETAIL PAGE (UPDATED UI)
 # -----------------------
 elif st.session_state.page == "detail":
 
@@ -124,7 +121,9 @@ elif st.session_state.page == "detail":
     if verified == "Yes":
         st.success("✅ Verified by Us")
 
-    # IMAGE GALLERY
+    st.markdown("### 📸 Gallery")
+    st.divider()
+
     sections = images.split("|")
     titles = ["🏠 Room", "🚿 Bathroom", "🍛 Food", "🍽️ Dining", "🧳 Storage", "📍 Outside"]
 
@@ -135,19 +134,23 @@ elif st.session_state.page == "detail":
         if img_list:
             st.subheader(titles[idx])
 
-            cols = st.columns(2)
+            cols = st.columns(3)
 
             for i, img in enumerate(img_list):
-                cols[i % 2].image(get_img_url(img), use_container_width=True)
+                cols[i % 3].image(
+                    get_img_url(img),
+                    use_container_width=True
+                )
 
-    # VIDEO GALLERY
     video_list = [v for v in videos.split(",") if v.strip()]
 
     if video_list:
         st.subheader("🎥 Videos")
 
-        for vid in video_list:
-            st.video(vid)
+        cols = st.columns(2)
+
+        for i, vid in enumerate(video_list):
+            cols[i % 2].video(vid)
 
     if st.button("⬅ Back"):
         st.session_state.page = "home"
@@ -170,7 +173,6 @@ elif st.session_state.page == "admin":
         st.session_state.page = "home"
         st.rerun()
 
-    # ADD PG
     st.subheader("Add PG")
 
     name = st.text_input("Name")
@@ -204,7 +206,6 @@ elif st.session_state.page == "admin":
         ]
 
         image_string = "|".join([s for s in sections if s])
-
         video_string = upload(videos, folder="pg_videos", video=True)
 
         pg_sheet.append_row([
@@ -218,7 +219,6 @@ elif st.session_state.page == "admin":
         st.success("✅ Saved Successfully!")
         st.rerun()
 
-    # MANAGE PGs
     st.subheader("📋 Manage PGs")
 
     data = pg_sheet.get_all_values()
@@ -252,6 +252,6 @@ elif st.session_state.page == "admin":
                 pg_sheet.update_cell(i + 2, 3, "Yes")
                 st.rerun()
         else:
-            col2.write("🔒 Locked (Verified)")
+            col2.write("🔒 Locked")
 
         st.divider()
