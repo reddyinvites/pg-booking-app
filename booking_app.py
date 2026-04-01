@@ -27,14 +27,14 @@ creds = Credentials.from_service_account_info(gcp_info, scopes=scope)
 client = gspread.authorize(creds)
 
 # -----------------------
-# SHEETS (IMPORTANT)
+# SHEETS (FINAL FIX)
 # -----------------------
 SPREADSHEET_ID = "1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q"
 
 sheet = client.open_by_key(SPREADSHEET_ID)
 
-pg_data_sheet = sheet.worksheet("pg_data")        # READ FROM HERE
-verified_sheet = sheet.worksheet("verified_pg")   # SAVE HERE
+pg_data_sheet = sheet.worksheet("Sheet1")        # ✅ YOUR REAL DATA
+verified_sheet = sheet.worksheet("verified_pg")  # ✅ SAVE HERE
 
 # -----------------------
 # LOGIN
@@ -49,7 +49,7 @@ if password != "1234":
 st.success("Logged in")
 
 # -----------------------
-# GET PG DATA (REAL DATA)
+# READ PG DATA
 # -----------------------
 pg_rows = pg_data_sheet.get_all_values()
 
@@ -61,6 +61,10 @@ for row in pg_rows[1:]:
 
         if name and location:
             options.append(f"{name} | {location}")
+
+if not options:
+    st.error("❌ No PG data found (Check Sheet1 & sharing)")
+    st.stop()
 
 # -----------------------
 # ADD PG
