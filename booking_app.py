@@ -26,8 +26,14 @@ gcp_info["private_key"] = gcp_info["private_key"].replace("\\n", "\n")
 creds = Credentials.from_service_account_info(gcp_info, scopes=scope)
 client = gspread.authorize(creds)
 
+# -----------------------
+# SHEETS
+# -----------------------
 sheet = client.open("verified_pg")
 pg_sheet = sheet.sheet1
+
+# 🔥 NEW (REAL PG DATA)
+pg_data_sheet = client.open_by_key("1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q").sheet1
 
 # -----------------------
 # SESSION
@@ -67,13 +73,14 @@ def upload(files, folder="pg_images", video=False):
     return ",".join(urls)
 
 # -----------------------
-# HOME
+# HOME (UPDATED SOURCE)
 # -----------------------
 if st.session_state.page == "home":
 
     st.title("🏠 Verified PGs")
 
-    data = pg_sheet.get_all_values()
+    # 🔥 USING pg_data INSTEAD OF verified_pg
+    data = pg_data_sheet.get_all_values()
     rows = data[1:] if len(data) > 1 else []
 
     for i, row in enumerate(rows):
@@ -84,14 +91,14 @@ if st.session_state.page == "home":
         name = row[0]
         location = row[1]
 
-        if not name:
+        if not name.strip():
             continue
 
         st.subheader(f"🏠 {name}")
         st.write(f"📍 {location}")
 
         if st.button(f"View {name}", key=f"view_{i}"):
-            st.session_state.pg = row
+            st.session_state.pg_name = name   # 🔥 store name only
             st.session_state.page = "detail"
             st.rerun()
 
@@ -102,17 +109,33 @@ if st.session_state.page == "home":
         st.rerun()
 
 # -----------------------
-# DETAIL PAGE (🔥 FIXED GRID UI)
+# DETAIL PAGE (MATCH WITH verified_pg)
 # -----------------------
 elif st.session_state.page == "detail":
 
-    pg = st.session_state.pg
+    name = st.session_state.pg_name
 
-    name = pg[0]
-    location = pg[1]
-    verified = pg[2] if len(pg) > 2 else ""
-    images = pg[3] if len(pg) > 3 else ""
-    videos = pg[4] if len(pg) > 4 else ""
+    data = pg_sheet.get_all_values()
+    rows = data[1:] if len(data) > 1 else []
+
+    matched_pg = None
+
+    for row in rows:
+        if len(row) >= 1 and row[0] == name:
+            matched_pg = row
+            break
+
+    if not matched_pg:
+        st.warning("No verified data found for this PG")
+        if st.button("⬅ Back"):
+            st.session_state.page = "home"
+            st.rerun()
+        st.stop()
+
+    location = matched_pg[1]
+    verified = matched_pg[2]
+    images = matched_pg[3] if len(matched_pg) > 3 else ""
+    videos = matched_pg[4] if len(matched_pg) > 4 else ""
 
     st.title(name)
     st.write(f"📍 {location}")
@@ -133,7 +156,6 @@ elif st.session_state.page == "detail":
         if img_list:
             st.subheader(titles[idx])
 
-            # 🔥 GRID (SIDE-BY-SIDE)
             cols = st.columns(3)
 
             for i, img in enumerate(img_list):
@@ -142,7 +164,6 @@ elif st.session_state.page == "detail":
                     use_container_width=True
                 )
 
-    # 🎥 VIDEOS
     video_list = [v for v in videos.split(",") if v.strip()]
 
     if video_list:
@@ -158,7 +179,7 @@ elif st.session_state.page == "detail":
         st.rerun()
 
 # -----------------------
-# ADMIN
+# ADMIN (UNCHANGED)
 # -----------------------
 elif st.session_state.page == "admin":
 
@@ -193,10 +214,6 @@ elif st.session_state.page == "admin":
 
     if st.button("Save PG"):
 
-        if not name.strip() or not location.strip():
-            st.error("Enter name & location")
-            st.stop()
-
         sections = [
             upload(room),
             upload(bath),
@@ -217,45 +234,5 @@ elif st.session_state.page == "admin":
             video_string
         ])
 
-        st.success("✅ Saved Successfully!")
+        st.success("Saved!")
         st.rerun()
-
-    # -----------------------
-    # MANAGE
-    # -----------------------
-    st.subheader("📋 Manage PGs")
-
-    data = pg_sheet.get_all_values()
-    rows = data[1:] if len(data) > 1 else []
-
-    for i, row in enumerate(rows):
-
-        if len(row) < 3 or not row[0].strip():
-            continue
-
-        name = row[0]
-        location = row[1]
-        verified = row[2]
-
-        st.markdown(f"### 🏠 {name}")
-        st.write(f"📍 {location}")
-
-        if verified == "Yes":
-            st.success("✅ Verified")
-        else:
-            st.warning("❌ Not Verified")
-
-        col1, col2 = st.columns(2)
-
-        if col1.button("❌ Delete", key=f"d{i}"):
-            pg_sheet.delete_rows(i + 2)
-            st.rerun()
-
-        if verified == "No":
-            if col2.button("🔄 Verify Now", key=f"t{i}"):
-                pg_sheet.update_cell(i + 2, 3, "Yes")
-                st.rerun()
-        else:
-            col2.write("🔒 Locked")
-
-        st.divider()
