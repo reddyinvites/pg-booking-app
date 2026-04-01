@@ -27,14 +27,14 @@ creds = Credentials.from_service_account_info(gcp_info, scopes=scope)
 client = gspread.authorize(creds)
 
 # -----------------------
-# SHEETS (FINAL FIX)
+# SHEETS
 # -----------------------
 SPREADSHEET_ID = "1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q"
 
 sheet = client.open_by_key(SPREADSHEET_ID)
 
-pg_data_sheet = sheet.worksheet("Sheet1")        # ✅ YOUR REAL DATA
-verified_sheet = sheet.worksheet("verified_pg")  # ✅ SAVE HERE
+pg_data_sheet = sheet.worksheet("Sheet1")        # real data
+verified_sheet = sheet.worksheet("verified_pg")  # save here
 
 # -----------------------
 # LOGIN
@@ -63,7 +63,7 @@ for row in pg_rows[1:]:
             options.append(f"{name} | {location}")
 
 if not options:
-    st.error("❌ No PG data found (Check Sheet1 & sharing)")
+    st.error("❌ No PG data found")
     st.stop()
 
 # -----------------------
@@ -84,37 +84,45 @@ verified = st.selectbox("Verified", ["Yes", "No"])
 # UPLOAD
 # -----------------------
 st.subheader("📸 Upload Images")
-image_files = st.file_uploader("Images", accept_multiple_files=True)
+image_files = st.file_uploader(
+    "Images",
+    type=["jpg", "jpeg", "png"],
+    accept_multiple_files=True
+)
 
 st.subheader("🎥 Upload Videos")
-video_files = st.file_uploader("Videos", accept_multiple_files=True)
-
-image_urls = []
-video_urls = []
-
-# Upload images
-if image_files:
-    for file in image_files:
-        res = cloudinary.uploader.upload(file)
-        image_urls.append(res["secure_url"])
-
-# Upload videos
-if video_files:
-    for file in video_files:
-        res = cloudinary.uploader.upload(file, resource_type="video")
-        video_urls.append(res["secure_url"])
+video_files = st.file_uploader(
+    "Videos",
+    type=["mp4", "mov", "avi"],
+    accept_multiple_files=True
+)
 
 # -----------------------
-# SAVE
+# SAVE (FIXED)
 # -----------------------
 if st.button("💾 Save PG"):
+
+    image_urls = []
+    video_urls = []
+
+    # upload images
+    if image_files:
+        for file in image_files:
+            res = cloudinary.uploader.upload(file)
+            image_urls.append(res["secure_url"])
+
+    # upload videos
+    if video_files:
+        for file in video_files:
+            res = cloudinary.uploader.upload(file, resource_type="video")
+            video_urls.append(res["secure_url"])
 
     verified_sheet.append_row([
         name,
         location,
         verified,
-        "|".join(image_urls),
-        "|".join(video_urls)
+        "|".join(image_urls) if image_urls else "",
+        "|".join(video_urls) if video_urls else ""
     ])
 
     st.success("✅ Saved Successfully")
@@ -144,27 +152,32 @@ for i, pg in enumerate(data):
         verified_sheet.delete_rows(i + 2)
         st.rerun()
 
-    # TOGGLE VERIFY
+    # TOGGLE VERIFY (DISABLE IF VERIFIED)
     if pg.get("verified") != "Yes":
         if col2.button("🔄 Toggle Verify", key=f"toggle{i}"):
             verified_sheet.update_cell(i + 2, 3, "Yes")
             st.rerun()
 
     # -----------------------
-    # GALLERY
+    # GALLERY (GRID UI)
     # -----------------------
     images = str(pg.get("images", "")).split("|")
 
-    if images:
+    valid_images = [img for img in images if img.startswith("http")]
+
+    if valid_images:
+        st.write("📸 Images")
         cols = st.columns(3)
-        for j, img in enumerate(images):
-            if img.startswith("http"):
-                cols[j % 3].image(img, use_container_width=True)
+        for j, img in enumerate(valid_images):
+            cols[j % 3].image(img, use_container_width=True)
 
     videos = str(pg.get("videos", "")).split("|")
 
-    for v in videos:
-        if v.startswith("http"):
+    valid_videos = [v for v in videos if v.startswith("http")]
+
+    if valid_videos:
+        st.write("🎥 Videos")
+        for v in valid_videos:
             st.video(v)
 
     st.divider()
