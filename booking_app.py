@@ -7,20 +7,6 @@ import cloudinary.uploader
 st.set_page_config(page_title="PG Admin", layout="wide")
 
 # -----------------------
-# 🎨 FONT + UI STYLE
-# -----------------------
-st.markdown("""
-<style>
-html, body, [class*="css"]  {
-    font-family: 'Poppins', sans-serif;
-}
-h1, h2, h3 {
-    color: #1f2937;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# -----------------------
 # CONFIG
 # -----------------------
 cloudinary.config(
@@ -62,12 +48,20 @@ if password != "1234":
 st.success("✅ Logged in")
 
 # -----------------------
-# MENU
+# ☰ HAMBURGER MENU
 # -----------------------
-menu = st.radio("Menu", ["➕ Add PG", "📋 PG List", "🖼 Gallery"])
+st.sidebar.title("☰ Menu")
+
+menu = st.sidebar.radio(
+    "Go to",
+    ["➕ Add PG", "📋 Manage PGs", "🖼 Gallery"]
+)
+
+st.sidebar.markdown("---")
+st.sidebar.caption("PG Admin Panel 🚀")
 
 # -----------------------
-# ADD PG
+# ➕ ADD PG (YOUR SAME CODE)
 # -----------------------
 if menu == "➕ Add PG":
 
@@ -95,12 +89,12 @@ if menu == "➕ Add PG":
     # -----------------------
     categories = ["room", "bath", "food", "dining", "storage", "outside"]
 
-    category_data = {}
+    category_inputs = {}
 
     for cat in categories:
         st.subheader(f"📸 {cat.upper()}")
         files = st.file_uploader(cat, accept_multiple_files=True, key=cat)
-        category_data[cat] = files
+        category_inputs[cat] = files
 
     st.subheader("🎥 Videos")
     video_files = st.file_uploader("videos", accept_multiple_files=True)
@@ -117,18 +111,17 @@ if menu == "➕ Add PG":
                 st.error("❌ Already uploaded this PG")
                 st.stop()
 
-        all_category_urls = []
+        category_data = []
 
-        # Upload category images
-        for cat, files in category_data.items():
+        # Upload images
+        for cat, files in category_inputs.items():
             urls = []
             if files:
                 for file in files:
                     res = cloudinary.uploader.upload(file)
                     urls.append(res["secure_url"])
-
             if urls:
-                all_category_urls.append(f"{cat}:{','.join(urls)}")
+                category_data.append(f"{cat}:{','.join(urls)}")
 
         # Upload videos
         video_urls = []
@@ -141,7 +134,7 @@ if menu == "➕ Add PG":
             name,
             location,
             verified,
-            "|".join(all_category_urls),
+            "|".join(category_data),
             "|".join(video_urls)
         ])
 
@@ -152,15 +145,16 @@ if menu == "➕ Add PG":
         st.rerun()
 
 # -----------------------
-# PG LIST
+# 📋 MANAGE PGs (SAME)
 # -----------------------
-if menu == "📋 PG List":
+if menu == "📋 Manage PGs":
 
-    st.header("📋 PG List")
+    st.header("📋 Manage PGs")
 
     data = verified_sheet.get_all_records()
 
     for i, pg in enumerate(data):
+
         st.subheader(f"🏠 {pg.get('name')}")
         st.write(f"📍 {pg.get('location')}")
 
@@ -171,19 +165,19 @@ if menu == "📋 PG List":
 
         col1, col2 = st.columns(2)
 
-        if col1.button("❌ Delete", key=f"d{i}"):
+        if col1.button("❌ Delete", key=f"delete{i}"):
             verified_sheet.delete_rows(i + 2)
             st.rerun()
 
         if pg.get("verified") != "Yes":
-            if col2.button("✔ Verify", key=f"v{i}"):
+            if col2.button("🔄 Verify", key=f"toggle{i}"):
                 verified_sheet.update_cell(i + 2, 3, "Yes")
                 st.rerun()
 
         st.divider()
 
 # -----------------------
-# GALLERY
+# 🖼 GALLERY (FIXED)
 # -----------------------
 if menu == "🖼 Gallery":
 
@@ -192,32 +186,30 @@ if menu == "🖼 Gallery":
     data = verified_sheet.get_all_records()
 
     for pg in data:
+
         st.markdown(f"## 🏠 {pg.get('name')}")
         st.caption(f"📍 {pg.get('location')}")
 
-        images_raw = str(pg.get("images", "")).split("|")
+        images = str(pg.get("images", "")).split("|")
 
-        for block in images_raw:
+        for block in images:
             if ":" in block:
-                category, urls = block.split(":", 1)
+                cat, urls = block.split(":")
                 urls = urls.split(",")
 
-                st.markdown(f"### 🔹 {category.upper()}")
+                st.markdown(f"### 🔹 {cat.upper()}")
 
                 cols = st.columns(3)
-
                 for i, img in enumerate(urls):
                     if img.startswith("http"):
-                        with cols[i % 3]:
-                            st.image(img, use_container_width=True)
+                        cols[i % 3].image(img, use_container_width=True)
 
-        # VIDEOS
         videos = str(pg.get("videos", "")).split("|")
 
         valid_videos = [v for v in videos if v.startswith("http")]
 
         if valid_videos:
-            st.markdown("### 🎥 VIDEOS")
+            st.markdown("### 🎥 Videos")
             for v in valid_videos:
                 st.video(v)
 
