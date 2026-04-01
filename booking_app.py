@@ -29,10 +29,12 @@ client = gspread.authorize(creds)
 # -----------------------
 # SHEETS
 # -----------------------
-verified_sheet = client.open_by_key("1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q").sheet1
+SPREADSHEET_ID = "1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q"
 
-# 👉 CHANGE THIS (pg_data sheet ID)
-pg_data_sheet = client.open_by_key("1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q").worksheet("Sheet1")
+verified_sheet = client.open_by_key(SPREADSHEET_ID).sheet1
+
+# ✅ IMPORTANT FIX (always works)
+pg_data_sheet = client.open_by_key(SPREADSHEET_ID).get_worksheet(0)
 
 # -----------------------
 # SESSION
@@ -69,7 +71,7 @@ if st.session_state.page == "home":
         st.rerun()
 
 # -----------------------
-# DETAIL (GALLERY)
+# DETAIL PAGE (GALLERY)
 # -----------------------
 elif st.session_state.page == "detail":
 
@@ -85,7 +87,7 @@ elif st.session_state.page == "detail":
     cols = st.columns(2)
     for i, img in enumerate(images):
         if img.startswith("http"):
-            cols[i % 2].image(img)
+            cols[i % 2].image(img, use_container_width=True)
 
     st.subheader("🎥 Videos")
 
@@ -112,24 +114,24 @@ elif st.session_state.page == "admin":
     st.success("Logged in")
 
     # -----------------------
-    # DROPDOWN FROM PG_DATA
+    # FETCH PG DATA
     # -----------------------
     pg_data = pg_data_sheet.get_all_values()
+
+    st.write("DEBUG PG DATA:", pg_data)  # 🔥 remove later
 
     options = []
 
     for row in pg_data[1:]:
-        try:
-            name = row[1].strip()      # pg_name (B column)
-            location = row[2].strip()  # location (C column)
+        if len(row) >= 3:
+            name = row[1].strip()      # pg_name
+            location = row[2].strip()  # location
 
             if name and location:
                 options.append(f"{name} | {location}")
-        except:
-            continue
 
     if not options:
-        st.error("❌ No PG data found")
+        st.error("❌ No PG data found (check sheet sharing)")
         st.stop()
 
     selected = st.selectbox("Select PG", options)
@@ -205,7 +207,7 @@ elif st.session_state.page == "admin":
             verified_sheet.delete_rows(i + 2)
             st.rerun()
 
-        # TOGGLE (DISABLE IF VERIFIED)
+        # TOGGLE (ONLY IF NOT VERIFIED)
         if pg.get("verified") != "Yes":
             if col2.button("🔄 Toggle Verify", key=f"t{i}"):
                 verified_sheet.update_cell(i + 2, 3, "Yes")
