@@ -40,6 +40,37 @@ if "page" not in st.session_state:
     st.session_state.page = "home"
 
 # -----------------------
+# HELPER (SHORT URL)
+# -----------------------
+def get_img_url(public_id):
+    return f"https://res.cloudinary.com/{st.secrets['cloudinary']['cloud_name']}/image/upload/{public_id}.jpg"
+
+# -----------------------
+# UPLOAD FUNCTION
+# -----------------------
+def upload(files, folder="pg_images", video=False):
+    urls = []
+
+    if files:
+        for i, f in enumerate(files):
+            try:
+                res = cloudinary.uploader.upload(
+                    f,
+                    folder=folder,
+                    resource_type="video" if video else "image"
+                )
+
+                if video:
+                    urls.append(res["secure_url"])
+                else:
+                    urls.append(res["public_id"])  # short
+
+            except Exception as e:
+                st.error(f"Upload failed: {e}")
+
+    return ",".join(urls)
+
+# -----------------------
 # HOME
 # -----------------------
 if st.session_state.page == "home":
@@ -54,8 +85,8 @@ if st.session_state.page == "home":
         if len(row) < 2:
             continue
 
-        name = row[0].strip()
-        location = row[1].strip()
+        name = row[0]
+        location = row[1]
 
         if not name:
             continue
@@ -75,14 +106,14 @@ if st.session_state.page == "home":
         st.rerun()
 
 # -----------------------
-# DETAIL
+# DETAIL PAGE
 # -----------------------
 elif st.session_state.page == "detail":
 
     pg = st.session_state.pg
 
-    name = pg[0] if len(pg) > 0 else ""
-    location = pg[1] if len(pg) > 1 else ""
+    name = pg[0]
+    location = pg[1]
     verified = pg[2] if len(pg) > 2 else ""
     images = pg[3] if len(pg) > 3 else ""
     videos = pg[4] if len(pg) > 4 else ""
@@ -93,12 +124,8 @@ elif st.session_state.page == "detail":
     if verified == "Yes":
         st.success("✅ Verified by Us")
 
-    # -----------------------
     # IMAGE GALLERY
-    # -----------------------
     sections = images.split("|")
-    sections += [""] * (6 - len(sections))
-
     titles = ["🏠 Room", "🚿 Bathroom", "🍛 Food", "🍽️ Dining", "🧳 Storage", "📍 Outside"]
 
     for idx, sec in enumerate(sections):
@@ -111,20 +138,16 @@ elif st.session_state.page == "detail":
             cols = st.columns(2)
 
             for i, img in enumerate(img_list):
-                if img.startswith("http"):
-                    cols[i % 2].image(img, use_container_width=True)
+                cols[i % 2].image(get_img_url(img), use_container_width=True)
 
-    # -----------------------
     # VIDEO GALLERY
-    # -----------------------
     video_list = [v for v in videos.split(",") if v.strip()]
 
     if video_list:
         st.subheader("🎥 Videos")
 
         for vid in video_list:
-            if vid.startswith("http"):
-                st.video(vid)
+            st.video(vid)
 
     if st.button("⬅ Back"):
         st.session_state.page = "home"
@@ -147,9 +170,7 @@ elif st.session_state.page == "admin":
         st.session_state.page = "home"
         st.rerun()
 
-    # -----------------------
     # ADD PG
-    # -----------------------
     st.subheader("Add PG")
 
     name = st.text_input("Name")
@@ -165,7 +186,7 @@ elif st.session_state.page == "admin":
     dining = uploader("dining")
     storage = uploader("storage")
     outside = uploader("outside")
-    videos = st.file_uploader("videos", accept_multiple_files=True)
+    videos = st.file_uploader("videos", type=["mp4"], accept_multiple_files=True)
 
     if st.button("Save PG"):
 
@@ -173,29 +194,18 @@ elif st.session_state.page == "admin":
             st.error("Enter name & location")
             st.stop()
 
-        def upload(files, video=False):
-            urls = []
-            if files:
-                for f in files:
-                    try:
-                        res = cloudinary.uploader.upload(
-                            f, resource_type="video" if video else "image"
-                        )
-                        urls.append(res["secure_url"])
-                    except Exception as e:
-                        st.error(e)
-            return ",".join(urls)
-
-        image_string = "|".join([
+        sections = [
             upload(room),
             upload(bath),
             upload(food),
             upload(dining),
             upload(storage),
             upload(outside)
-        ])
+        ]
 
-        video_string = upload(videos, True)
+        image_string = "|".join([s for s in sections if s])
+
+        video_string = upload(videos, folder="pg_videos", video=True)
 
         pg_sheet.append_row([
             name.strip(),
@@ -208,9 +218,7 @@ elif st.session_state.page == "admin":
         st.success("✅ Saved Successfully!")
         st.rerun()
 
-    # -----------------------
     # MANAGE PGs
-    # -----------------------
     st.subheader("📋 Manage PGs")
 
     data = pg_sheet.get_all_values()
@@ -235,18 +243,13 @@ elif st.session_state.page == "admin":
 
         col1, col2 = st.columns(2)
 
-        # DELETE
         if col1.button("❌ Delete", key=f"d{i}"):
             pg_sheet.delete_rows(i + 2)
             st.rerun()
 
-        # 🔒 TOGGLE DISABLED AFTER VERIFIED
         if verified == "No":
             if col2.button("🔄 Verify Now", key=f"t{i}"):
-
                 pg_sheet.update_cell(i + 2, 3, "Yes")
-
-                st.success("PG Verified ✅")
                 st.rerun()
         else:
             col2.write("🔒 Locked (Verified)")
