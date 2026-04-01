@@ -48,6 +48,11 @@ if password != "1234":
 st.success("✅ Logged in")
 
 # -----------------------
+# SIDEBAR MENU (NEW)
+# -----------------------
+menu = st.sidebar.radio("📌 Menu", ["➕ Add PG", "📋 PG List", "🖼 Gallery"])
+
+# -----------------------
 # READ PG DATA
 # -----------------------
 pg_rows = pg_sheet.get_all_values()
@@ -57,101 +62,87 @@ for row in pg_rows[1:]:
     if len(row) >= 3:
         name = row[1].strip()
         location = row[2].strip()
-
         if name and location:
             options.append(f"{name} | {location}")
 
-if not options:
-    st.error("❌ No PG data found")
-    st.stop()
+# -----------------------
+# ➕ ADD PG
+# -----------------------
+if menu == "➕ Add PG":
+
+    st.header("➕ Add PG")
+
+    selected = st.selectbox("Select PG", options)
+
+    name, location = selected.split(" | ")
+
+    st.text_input("Name", value=name, disabled=True)
+    st.text_input("Location", value=location, disabled=True)
+
+    verified = st.selectbox("Verified", ["Yes", "No"])
+
+    # CATEGORY UPLOAD
+    st.subheader("📸 Upload by Category")
+
+    room_files = st.file_uploader("🛏 Room", accept_multiple_files=True)
+    bath_files = st.file_uploader("🚿 Bath", accept_multiple_files=True)
+    food_files = st.file_uploader("🍛 Food", accept_multiple_files=True)
+    dining_files = st.file_uploader("🍽 Dining", accept_multiple_files=True)
+    storage_files = st.file_uploader("🗄 Storage", accept_multiple_files=True)
+    outside_files = st.file_uploader("🏡 Outside", accept_multiple_files=True)
+
+    # VIDEO
+    st.subheader("🎥 Upload Videos")
+    video_files = st.file_uploader("Videos", accept_multiple_files=True)
+
+    if st.button("💾 Save PG"):
+
+        def upload_and_tag(files, category):
+            urls = []
+            if files:
+                for f in files:
+                    res = cloudinary.uploader.upload(f)
+                    urls.append(res["secure_url"])
+            return f"{category}:" + ",".join(urls) if urls else ""
+
+        parts = []
+
+        for data in [
+            upload_and_tag(room_files, "room"),
+            upload_and_tag(bath_files, "bath"),
+            upload_and_tag(food_files, "food"),
+            upload_and_tag(dining_files, "dining"),
+            upload_and_tag(storage_files, "storage"),
+            upload_and_tag(outside_files, "outside"),
+        ]:
+            if data:
+                parts.append(data)
+
+        final_images = "|".join(parts)
+
+        video_urls = []
+        if video_files:
+            for file in video_files:
+                res = cloudinary.uploader.upload(file, resource_type="video")
+                video_urls.append(res["secure_url"])
+
+        verified_sheet.append_row([
+            name,
+            location,
+            verified,
+            final_images,
+            "|".join(video_urls)
+        ])
+
+        st.success("✅ Saved Successfully")
+        st.session_state.clear()
+        st.rerun()
 
 # -----------------------
-# ADD PG
+# 📋 PG LIST
 # -----------------------
-st.header("➕ Add PG")
+if menu == "📋 PG List":
 
-selected = st.selectbox("Select PG", options)
-
-name, location = selected.split(" | ")
-
-st.text_input("Name", value=name, disabled=True)
-st.text_input("Location", value=location, disabled=True)
-
-verified = st.selectbox("Verified", ["Yes", "No"])
-
-# -----------------------
-# CATEGORY UPLOAD
-# -----------------------
-st.subheader("📸 Upload by Category")
-
-room_files = st.file_uploader("🛏 Room", accept_multiple_files=True, key="room")
-bath_files = st.file_uploader("🚿 Bath", accept_multiple_files=True, key="bath")
-food_files = st.file_uploader("🍛 Food", accept_multiple_files=True, key="food")
-dining_files = st.file_uploader("🍽 Dining", accept_multiple_files=True, key="dining")
-storage_files = st.file_uploader("🗄 Storage", accept_multiple_files=True, key="storage")
-outside_files = st.file_uploader("🏡 Outside", accept_multiple_files=True, key="outside")
-
-# -----------------------
-# VIDEO UPLOAD
-# -----------------------
-st.subheader("🎥 Upload Videos")
-video_files = st.file_uploader("Videos", accept_multiple_files=True)
-
-# -----------------------
-# SAVE
-# -----------------------
-if st.button("💾 Save PG"):
-
-    def upload_and_tag(files, category):
-        urls = []
-        if files:
-            for f in files:
-                res = cloudinary.uploader.upload(f)
-                urls.append(res["secure_url"])
-        return f"{category}:" + ",".join(urls) if urls else ""
-
-    parts = []
-
-    for data in [
-        upload_and_tag(room_files, "room"),
-        upload_and_tag(bath_files, "bath"),
-        upload_and_tag(food_files, "food"),
-        upload_and_tag(dining_files, "dining"),
-        upload_and_tag(storage_files, "storage"),
-        upload_and_tag(outside_files, "outside"),
-    ]:
-        if data:
-            parts.append(data)
-
-    final_images = "|".join(parts)
-
-    video_urls = []
-    if video_files:
-        for file in video_files:
-            res = cloudinary.uploader.upload(file, resource_type="video")
-            video_urls.append(res["secure_url"])
-
-    verified_sheet.append_row([
-        name,
-        location,
-        verified,
-        final_images,
-        "|".join(video_urls)
-    ])
-
-    st.success("✅ Saved Successfully")
-    st.session_state.clear()
-    st.rerun()
-
-# -----------------------
-# TABS
-# -----------------------
-tab1, tab2 = st.tabs(["📋 PG List", "🖼 Gallery"])
-
-# -----------------------
-# TAB 1
-# -----------------------
-with tab1:
     st.header("📋 Manage PGs")
 
     data = verified_sheet.get_all_records()
@@ -180,9 +171,10 @@ with tab1:
         st.divider()
 
 # -----------------------
-# TAB 2 (GALLERY)
+# 🖼 GALLERY (FIXED)
 # -----------------------
-with tab2:
+if menu == "🖼 Gallery":
+
     st.header("🖼 PG Gallery")
 
     data = verified_sheet.get_all_records()
@@ -194,7 +186,7 @@ with tab2:
 
         for block in images_raw:
             if ":" in block:
-                category, urls = block.split(":")
+                category, urls = block.split(":", 1)  # ✅ FIX
                 urls = urls.split(",")
 
                 st.write(f"### {category.upper()}")
