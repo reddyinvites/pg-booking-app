@@ -32,7 +32,6 @@ client = gspread.authorize(creds)
 sheet = client.open("verified_pg")
 pg_sheet = sheet.sheet1
 
-# 🔥 NEW (REAL PG DATA)
 pg_data_sheet = client.open_by_key("1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q").sheet1
 
 # -----------------------
@@ -73,13 +72,12 @@ def upload(files, folder="pg_images", video=False):
     return ",".join(urls)
 
 # -----------------------
-# HOME (UPDATED SOURCE)
+# HOME (pg_data SOURCE)
 # -----------------------
 if st.session_state.page == "home":
 
     st.title("🏠 Verified PGs")
 
-    # 🔥 USING pg_data INSTEAD OF verified_pg
     data = pg_data_sheet.get_all_values()
     rows = data[1:] if len(data) > 1 else []
 
@@ -98,7 +96,7 @@ if st.session_state.page == "home":
         st.write(f"📍 {location}")
 
         if st.button(f"View {name}", key=f"view_{i}"):
-            st.session_state.pg_name = name   # 🔥 store name only
+            st.session_state.pg_name = name
             st.session_state.page = "detail"
             st.rerun()
 
@@ -109,7 +107,7 @@ if st.session_state.page == "home":
         st.rerun()
 
 # -----------------------
-# DETAIL PAGE (MATCH WITH verified_pg)
+# DETAIL PAGE
 # -----------------------
 elif st.session_state.page == "detail":
 
@@ -179,7 +177,7 @@ elif st.session_state.page == "detail":
         st.rerun()
 
 # -----------------------
-# ADMIN (UNCHANGED)
+# ADMIN (UPDATED DROPDOWN ONLY)
 # -----------------------
 elif st.session_state.page == "admin":
 
@@ -197,8 +195,20 @@ elif st.session_state.page == "admin":
 
     st.subheader("Add PG")
 
-    name = st.text_input("Name")
-    location = st.text_input("Location")
+    # 🔥 DROPDOWN FROM pg_data
+    pg_data = pg_data_sheet.get_all_values()
+    pg_rows = pg_data[1:] if len(pg_data) > 1 else []
+
+    pg_options = []
+
+    for row in pg_rows:
+        if len(row) >= 2 and row[0].strip():
+            pg_options.append(f"{row[0]} | {row[1]}")
+
+    selected_pg = st.selectbox("Select PG", pg_options)
+
+    name, location = selected_pg.split(" | ")
+
     verified = st.selectbox("Verified", ["Yes", "No"])
 
     def uploader(key):
