@@ -1,14 +1,14 @@
 import streamlit as st
 import pandas as pd
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2.service_account import Credentials
 import json
 from datetime import datetime
 
 st.set_page_config(page_title="PG Match Engine", layout="centered")
 st.title("🏠 PG Match Engine (AI + Smart Matching)")
 
-# ---------------- SAFE CONVERSION (NEW - NO CHANGE TO LOGIC) ----------------
+# ---------------- SAFE CONVERSION ----------------
 def safe_float(val, default=3):
     try:
         if val is None or val == "":
@@ -23,8 +23,9 @@ scope = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-creds = ServiceAccountCredentials.from_json_keyfile_dict(
-    st.secrets["gcp"], scope
+creds = Credentials.from_service_account_info(
+    st.secrets["gcp"],
+    scopes=scope
 )
 
 client = gspread.authorize(creds)
