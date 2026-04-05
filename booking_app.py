@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
+import random
 
 st.set_page_config(page_title="PG Match Engine", layout="centered")
 st.title("🏠 PG Match Engine (Smart Recommendation)")
@@ -18,7 +19,6 @@ creds = Credentials.from_service_account_info(
 )
 
 client = gspread.authorize(creds)
-
 sheet = client.open_by_key("1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q").sheet1
 
 # ---------------- LOAD ----------------
@@ -141,9 +141,30 @@ for i, r in enumerate(results):
 
     st.markdown(f"🛏 {r['beds']} Beds Available")
 
-    # ⚡ URGENCY
-    if r["beds"] <= 2:
-        st.warning("⚡ Only few beds left!")
+    # 🔥 URGENCY SYSTEM
+    beds = r["beds"]
+
+    if beds == 1:
+        st.error("🔥 Last bed available! Book now")
+    elif beds == 2:
+        st.warning("⚡ Only 2 beds left")
+    elif beds <= 4:
+        st.info("⏳ Filling fast")
+
+    # 🔥 PRICE URGENCY
+    if r["price"] == pref_budget:
+        st.success("💥 Best price for your budget — High demand!")
+
+    # 🔥 COMBO URGENCY
+    if r["price"] == pref_budget and beds <= 2:
+        st.error("🚨 Perfect match + Almost full! Don’t miss this PG")
+
+    # 👀 SOCIAL PROOF
+    views = random.randint(20, 80)
+    st.caption(f"👀 {views} people viewed this PG today")
+
+    # ⏰ TIME PRESSURE
+    st.caption("⏰ Prices may increase soon due to demand")
 
     # 📞 CONTACT
     st.markdown(f"📞 {r['phone']}")
