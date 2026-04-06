@@ -269,17 +269,14 @@ for r in results[:3]:
 
         else:
             try:
-                # ✅ OPEN CORRECT BOOKINGS SHEET (APP FILE)
                 booking_sheet = client.open_by_key(PG_APP_ID).worksheet("Bookings")
 
-                # ✅ GET pg_id FROM SELECTED ROOM
                 selected_room_data = room_df[
                     room_df["room_no"].astype(str) == str(selected_room)
                 ]
 
                 pg_id = str(selected_room_data["pg_id"].values[0])
 
-                # ✅ SAVE BOOKING (MATCH YOUR SHEET FORMAT)
                 booking_sheet.append_row([
                     pg_id,
                     name,
@@ -289,26 +286,23 @@ for r in results[:3]:
                     pref_sharing
                 ])
 
-                # ✅ REDUCE BED COUNT (ROOM LEVEL)
+                # reduce beds
                 all_rows = sheet.get_all_records()
                 headers = sheet.row_values(1)
                 bed_col_index = headers.index("available_beds") + 1
 
                 for i, row_data in enumerate(all_rows, start=2):
-
                     if (
                         str(row_data["pg_name"]) == str(r["pg"]) and
                         str(row_data["room_no"]) == str(selected_room)
                     ):
                         current_beds = int(row_data["available_beds"])
-
                         if current_beds > 0:
                             sheet.update_cell(i, bed_col_index, current_beds - 1)
 
                 st.success("🎉 Booking Confirmed!")
                 st.balloons()
 
-                # ✅ REFRESH UI
                 st.cache_data.clear()
                 st.rerun()
 
