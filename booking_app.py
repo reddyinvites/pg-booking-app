@@ -226,86 +226,136 @@ for _, row in df.iterrows():
 # ---------------- SORT ----------------
 results = sorted(results, key=lambda x: x["score"], reverse=True)
 
-# ---------------- DISPLAY 
-# ---------------- ROOM SELECTION ----------------
-room_df = df[
-    (df["pg_name"] == r["pg"]) &
-    (df["location"] == r["location"]) &
-    (df["available_beds"] > 0)
-]
+# ---------------- DISPLAY ----------------
+st.subheader("🏆 Best PGs For You")
 
-if not room_df.empty:
+for r in results[:3]:
 
-    room_list = room_df["room_no"].astype(str).unique().tolist()
+    st.markdown(f"## 🏠 {r['pg']} — {r['score']}% Match")
 
-    selected_room = st.selectbox(
-        f"🛏 Select Room - {r['pg']}",
-        room_list,
-        key=f"room_{r['pg']}"
-    )
+    if r["price"] == pref_budget:
+        st.success(f"💰 ₹{r['price']} (Perfect match 🔥)")
+    elif r["price"] < pref_budget:
+        st.info(f"💰 ₹{r['price']} (Save ₹{pref_budget - r['price']})")
+    else:
+        st.warning(f"💰 ₹{r['price']} (Above budget)")
 
-    # Show availability
-    selected_room_data = room_df[room_df["room_no"].astype(str) == selected_room]
+    st.write(f"🛏 {r['beds']} Beds Available")
 
-    beds_left = int(selected_room_data["available_beds"].values[0])
-    st.info(f"🛏 Available Beds in Room {selected_room}: {beds_left}")
+    # ---------------- ROOM SELECTION ----------------
+    room_df = df[
+        (df["pg_name"] == r["pg"]) &
+        (df["location"] == r["location"]) &
+        (df["available_beds"] > 0)
+    ]
 
-    # ---------------- BOOK FORM ----------------
-    with st.form(f"book_form_{r['pg']}"):
+    if not room_df.empty:
 
-        name = st.text_input("👤 Your Name")
-        phone = st.text_input("📞 Phone Number")
-        move_date = st.date_input("📅 Move-in Date")
+        room_list = room_df["room_no"].astype(str).unique().tolist()
 
-        submit = st.form_submit_button("🚀 Confirm Booking")
+        selected_room = st.selectbox(
+            f"🛏 Select Room - {r['pg']}",
+            room_list,
+            key=f"room_{r['pg']}"
+        )
 
-        if submit:
+        selected_room_data = room_df[
+            room_df["room_no"].astype(str) == selected_room
+        ]
 
-            if not name or not phone:
-                st.error("Please fill all details ❌")
+        beds_left = int(selected_room_data["available_beds"].values[0])
+        st.info(f"🛏 Available Beds in Room {selected_room}: {beds_left}")
 
-            else:
-                try:
-                    # ---------------- SAVE BOOKING ----------------
-                    booking_sheet = sh.worksheet("Bookings")
+        # ---------------- BOOK FORM ----------------
+        with st.form(f"book_form_{r['pg']}"):
 
-                    booking_sheet.append_row([
-                        r["pg"],
-                        selected_room,   # ✅ ROOM LEVEL
-                        r["location"],
-                        r["price"],
-                        name,
-                        phone,
-                        str(move_date),
-                        "CONFIRMED"
-                    ])
+            name = st.text_input("👤 Your Name")
+            phone = st.text_input("📞 Phone Number")
+            move_date = st.date_input("📅 Move-in Date")
 
-                    # ---------------- REDUCE BED ----------------
-                    all_rows = sheet.get_all_records()
+            submit = st.form_submit_button("🚀 Confirm Booking")
 
-                    headers = sheet.row_values(1)
-                    bed_col_index = headers.index("available_beds") + 1
-                    room_col_index = headers.index("room_no")
+            if submit:
 
-                    for i, row_data in enumerate(all_rows, start=2):
+                if not name or not phone:
+                    st.error("Please fill all details ❌")
 
-                        if (
-                            str(row_data["pg_name"]) == str(r["pg"]) and
-                            str(row_data["room_no"]) == str(selected_room)
-                        ):
-                            current_beds = int(row_data["available_beds"])
+                else:
+                    try:
+                        booking_sheet = sh.worksheet("Bookings")
 
-                            if current_beds > 0:
-                                sheet.update_cell(i, bed_col_index, current_beds - 1)
+                        booking_sheet.append_row([
+                            r["pg"],
+                            selected_room,
+                            r["location"],
+                            r["price"],
+                            name,
+                            phone,
+                            str(move_date),
+                            "CONFIRMED"
+                        ])
 
-                    st.success("🎉 Booking Confirmed!")
-                    st.balloons()
+                        all_rows = sheet.get_all_records()
+                        headers = sheet.row_values(1)
+                        bed_col_index = headers.index("available_beds") + 1
 
-                except Exception as e:
-                    st.error(f"Error: {e}")
+                        for i, row_data in enumerate(all_rows, start=2):
 
-else:
-    st.warning("No rooms available ❌")
+                            if (
+                                str(row_data["pg_name"]) == str(r["pg"]) and
+                                str(row_data["room_no"]) == str(selected_room)
+                            ):
+                                current_beds = int(row_data["available_beds"])
+
+                                if current_beds > 0:
+                                    sheet.update_cell(i, bed_col_index, current_beds - 1)
+
+                        st.success("🎉 Booking Confirmed!")
+                        st.balloons()
+
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+
+    else:
+        st.warning("No rooms available ❌")
+
+    # ---------------- CONDITION SCORE ----------------
+    st.markdown("### 😣 PG Condition Score")
+    st.write(f"⭐ {r['pain']} / 5")
+
+    st.write(f"🍛 Food → {r['food_s']}")
+    st.write(f"🧼 Cleanliness → {r['clean_s']}")
+    st.write(f"🔐 Safety → {r['safety_s']}")
+    st.write(f"🛠 Maintenance → {r['maint_s']}")
+
+    if r["noise_label"] == "Low":
+        st.success("🔇 Noise → Low (Peaceful)")
+    elif r["noise_label"] == "Medium":
+        st.warning("🔇 Noise → Medium")
+    else:
+        st.error("🔇 Noise → High")
+
+    st.markdown("### 🚨 Biggest Issue")
+    st.error(r["big_issue"])
+
+    st.markdown("### 💡 Why this PG?")
+    for reason in r["reasons"]:
+        st.write("•", reason)
+
+    st.markdown("### ✅ Why choose this PG?")
+    if r["food_s"] >= 4:
+        st.write("✔ Good food quality 🍛")
+    if r["clean_s"] >= 4:
+        st.write("✔ Clean rooms 🧼")
+    if r["safety_s"] >= 4:
+        st.write("✔ Safe environment 🔐")
+
+    if r["cons"]:
+        st.markdown("### ⚠️ Things to consider")
+        for c in r["cons"]:
+            st.write("•", c)
+
+    st.divider()
     # CONDITION SCORE
     st.markdown("### 😣 PG Condition Score")
     st.write(f"⭐ {r['pain']} / 5")
