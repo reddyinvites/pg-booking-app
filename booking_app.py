@@ -267,57 +267,66 @@ for r in results[:3]:
         st.info(f"🛏 Available Beds in Room {selected_room}: {beds_left}")
 
         # ---------------- BOOK FORM ----------------
-        with st.form(f"book_form_{r['pg']}"):
+with st.form(f"book_form_{r['pg']}"):
 
-            name = st.text_input("👤 Your Name")
-            phone = st.text_input("📞 Phone Number")
-            move_date = st.date_input("📅 Move-in Date")
+    name = st.text_input("👤 Your Name")
+    phone = st.text_input("📞 Phone Number")
+    move_date = st.date_input("📅 Move-in Date")
 
-            submit = st.form_submit_button("🚀 Confirm Booking")
+    submit = st.form_submit_button("🚀 Confirm Booking")
 
-            if submit:
+    if submit:
 
-                if not name or not phone:
-                    st.error("Please fill all details ❌")
+        if not name or not phone:
+            st.error("Please fill all details ❌")
 
-                else:
-                    try:
-                        booking_sheet = sh.worksheet("Bookings")
+        else:
+            try:
+                # ✅ CORRECT BOOKING SHEET (APP FILE)
+                booking_sheet = client.open_by_key(PG_APP_ID).worksheet("Bookings")
 
-                        booking_sheet.append_row([
-                            r["pg"],
-                            selected_room,
-                            r["location"],
-                            r["price"],
-                            name,
-                            phone,
-                            str(move_date),
-                            "CONFIRMED"
-                        ])
+                # ✅ GET pg_id FROM CURRENT ROOM DATA
+                selected_room_data = room_df[
+                    room_df["room_no"].astype(str) == str(selected_room)
+                ]
 
-                        all_rows = sheet.get_all_records()
-                        headers = sheet.row_values(1)
-                        bed_col_index = headers.index("available_beds") + 1
+                pg_id = str(selected_room_data["pg_id"].values[0])
 
-                        for i, row_data in enumerate(all_rows, start=2):
+                # ✅ MATCH YOUR SHEET STRUCTURE
+                booking_sheet.append_row([
+                    pg_id,           # pg_id
+                    name,            # name
+                    phone,           # phone
+                    r["pg"],         # pg_name
+                    selected_room,   # room_no
+                    pref_sharing     # sharing
+                ])
 
-                            if (
-                                str(row_data["pg_name"]) == str(r["pg"]) and
-                                str(row_data["room_no"]) == str(selected_room)
-                            ):
-                                current_beds = int(row_data["available_beds"])
+                # ---------------- REDUCE BED ----------------
+                all_rows = sheet.get_all_records()
+                headers = sheet.row_values(1)
+                bed_col_index = headers.index("available_beds") + 1
 
-                                if current_beds > 0:
-                                    sheet.update_cell(i, bed_col_index, current_beds - 1)
+                for i, row_data in enumerate(all_rows, start=2):
 
-                        st.success("🎉 Booking Confirmed!")
-                        st.balloons()
+                    if (
+                        str(row_data["pg_name"]) == str(r["pg"]) and
+                        str(row_data["room_no"]) == str(selected_room)
+                    ):
+                        current_beds = int(row_data["available_beds"])
 
-                    except Exception as e:
-                        st.error(f"Error: {e}")
+                        if current_beds > 0:
+                            sheet.update_cell(i, bed_col_index, current_beds - 1)
 
-    else:
-        st.warning("No rooms available ❌")
+                st.success("🎉 Booking Confirmed!")
+                st.balloons()
+
+                # ✅ REFRESH UI (NO LOGIC CHANGE)
+                st.cache_data.clear()
+                st.rerun()
+
+            except Exception as e:
+                st.error(f"Error: {e}")
 
     # ---------------- CONDITION SCORE ----------------
     st.markdown("### 😣 PG Condition Score")
