@@ -22,7 +22,7 @@ creds = Credentials.from_service_account_info(
 
 client = gspread.authorize(creds)
 
-# ✅ SAFE CONNECTION
+# ---------------- SAFE CONNECTION ----------------
 try:
     sh = client.open_by_key("1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q")
     sheet = sh.sheet1
@@ -49,7 +49,6 @@ if df.empty:
 
 # ---------------- CLEAN ----------------
 df = df[df["available_beds"] > 0]
-
 df[["area", "locality"]] = df["location"].str.split("-", expand=True)
 
 # ---------------- SEARCH ----------------
@@ -98,7 +97,7 @@ def safe_float(val, default=5):
 # ---------------- SCORING ----------------
 results = []
 
-grouped = df.groupby(["pg_id", "pg_name", "location"])  # ✅ UPDATED
+grouped = df.groupby(["pg_id", "pg_name", "location"])
 
 for (pg_id, pg_name, location), group in grouped:
 
@@ -194,7 +193,7 @@ for (pg_id, pg_name, location), group in grouped:
     score = max(0, min(100, int(score)))
 
     results.append({
-        "pg_id": pg_id,   # ✅ ADDED
+        "pg_id": pg_id,
         "pg": pg_name,
         "location": location,
         "price": price,
@@ -230,9 +229,8 @@ for r in results[:3]:
 
     st.write(f"🛏 {r['beds']} Beds Available")
 
-    # ---------------- ROOM SELECTION ----------------
     room_df = df[
-        (df["pg_id"] == r["pg_id"]) &   # ✅ UPDATED
+        (df["pg_id"] == r["pg_id"]) &
         (df["location"] == r["location"]) &
         (df["available_beds"] > 0)
     ]
@@ -244,7 +242,7 @@ for r in results[:3]:
         selected_room = st.selectbox(
             f"🛏 Select Room - {r['pg']}",
             room_list,
-            key=f"room_{r['pg_id']}"   # ✅ FIXED KEY
+            key=f"room_{r['pg_id']}"
         )
 
         selected_room_data = room_df[
@@ -265,8 +263,10 @@ for r in results[:3]:
 
             if submit:
 
-                if not name or not phone or not phone.isdigit() or len(phone) < 10:
-                    st.error("Enter valid details ❌")
+                clean_phone = phone.replace("+91", "").replace("+", "").replace(" ", "").strip()
+
+                if not (clean_phone.isdigit() and len(clean_phone) == 10 and clean_phone.startswith(("6","7","8","9"))):
+                    st.error("Enter valid Indian phone number ❌")
 
                 else:
                     try:
@@ -279,14 +279,13 @@ for r in results[:3]:
                             r["location"],
                             r["price"],
                             name.strip(),
-                            phone.strip(),
+                            clean_phone,
                             str(move_date),
                             "CONFIRMED"
                         ])
 
                         all_rows = sheet.get_all_records()
                         headers = [h.strip().lower() for h in sheet.row_values(1)]
-
                         bed_col_index = headers.index("available_beds") + 1
 
                         for i, row_data in enumerate(all_rows, start=2):
@@ -312,7 +311,6 @@ for r in results[:3]:
     else:
         st.warning("No rooms available ❌")
 
-    # ---------------- CONDITION SCORE ----------------
     st.markdown("### 😣 PG Condition Score")
     st.write(f"⭐ {r['pain']} / 5")
 
