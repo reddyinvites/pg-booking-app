@@ -271,13 +271,18 @@ for r in results[:3]:
             try:
                 from datetime import datetime
 
-                # ✅ OPEN CORRECT BOOKINGS SHEET
-                booking_sheet = client.open_by_key(PG_APP_ID).worksheet("Bookings")
+                # ✅ CHECK ROOM DATA
+                if selected_room_data.empty:
+                    st.error("Room data not found ❌")
+                    st.stop()
 
-                # ✅ GET PG ID FROM SELECTED ROOM
+                # ✅ GET PG ID
                 pg_id = str(selected_room_data["pg_id"].values[0])
 
-                # ✅ SAVE BOOKING (MATCH SHEET COLUMNS)
+                # ✅ OPEN BOOKINGS SHEET
+                booking_sheet = client.open_by_key(PG_APP_ID).worksheet("Bookings")
+
+                # ✅ SAVE BOOKING
                 booking_sheet.append_row([
                     pg_id,
                     name,
@@ -292,6 +297,11 @@ for r in results[:3]:
                 # ---------------- REDUCE BED ----------------
                 all_rows = sheet.get_all_records()
                 headers = sheet.row_values(1)
+
+                if "available_beds" not in headers:
+                    st.error("Column 'available_beds' not found ❌")
+                    st.stop()
+
                 bed_col_index = headers.index("available_beds") + 1
 
                 for i, row_data in enumerate(all_rows, start=2):
