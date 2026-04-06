@@ -98,11 +98,11 @@ def safe_float(val, default=5):
 # ---------------- SCORING ----------------
 results = []
 
-grouped = df.groupby(["pg_name", "location"])   # ✅ ADD THIS
+grouped = df.groupby(["pg_id", "pg_name", "location"])  # ✅ UPDATED
 
-for (pg_name, location), group in grouped:      # ✅ CHANGE LOOP
+for (pg_id, pg_name, location), group in grouped:
 
-    row = group.iloc[0]   # IMPORTANT → keep same logic
+    row = group.iloc[0]
 
     price_str = str(row["price"]).replace("₹", "").replace(",", "").strip()
     if not price_str.isdigit():
@@ -194,8 +194,9 @@ for (pg_name, location), group in grouped:      # ✅ CHANGE LOOP
     score = max(0, min(100, int(score)))
 
     results.append({
-        "pg": row["pg_name"],
-        "location": row["location"],
+        "pg_id": pg_id,   # ✅ ADDED
+        "pg": pg_name,
+        "location": location,
         "price": price,
         "beds": int(row["available_beds"]),
         "score": score,
@@ -231,7 +232,7 @@ for r in results[:3]:
 
     # ---------------- ROOM SELECTION ----------------
     room_df = df[
-        (df["pg_name"] == r["pg"]) &
+        (df["pg_id"] == r["pg_id"]) &   # ✅ UPDATED
         (df["location"] == r["location"]) &
         (df["available_beds"] > 0)
     ]
@@ -243,7 +244,7 @@ for r in results[:3]:
         selected_room = st.selectbox(
             f"🛏 Select Room - {r['pg']}",
             room_list,
-            key=f"room_{r['pg']}"
+            key=f"room_{r['pg_id']}"   # ✅ FIXED KEY
         )
 
         selected_room_data = room_df[
@@ -254,7 +255,7 @@ for r in results[:3]:
         st.info(f"🛏 Available Beds in Room {selected_room}: {beds_left}")
 
         # ---------------- BOOK FORM ----------------
-        with st.form(f"book_form_{r['pg']}"):
+        with st.form(f"book_form_{r['pg_id']}"):
 
             name = st.text_input("👤 Your Name")
             phone = st.text_input("📞 Phone Number")
@@ -264,33 +265,35 @@ for r in results[:3]:
 
             if submit:
 
-                if not name or not phone:
-                    st.error("Please fill all details ❌")
+                if not name or not phone or not phone.isdigit() or len(phone) < 10:
+                    st.error("Enter valid details ❌")
 
                 else:
                     try:
                         booking_sheet = client.open_by_key(PG_APP_ID).worksheet("Bookings")
 
                         booking_sheet.append_row([
+                            r["pg_id"],
                             r["pg"],
                             selected_room,
                             r["location"],
                             r["price"],
-                            name,
-                            phone,
+                            name.strip(),
+                            phone.strip(),
                             str(move_date),
                             "CONFIRMED"
                         ])
 
                         all_rows = sheet.get_all_records()
-                        headers = sheet.row_values(1)
+                        headers = [h.strip().lower() for h in sheet.row_values(1)]
+
                         bed_col_index = headers.index("available_beds") + 1
 
                         for i, row_data in enumerate(all_rows, start=2):
 
                             if (
-                                str(row_data["pg_name"]) == str(r["pg"]) and
-                                str(row_data["room_no"]) == str(selected_room)
+                                str(row_data["pg_id"]).strip() == str(r["pg_id"]).strip() and
+                                str(row_data["room_no"]).strip() == str(selected_room).strip()
                             ):
                                 current_beds = int(row_data["available_beds"])
 
@@ -299,6 +302,9 @@ for r in results[:3]:
 
                         st.success("🎉 Booking Confirmed!")
                         st.balloons()
+
+                        st.cache_data.clear()
+                        st.rerun()
 
                     except Exception as e:
                         st.error(f"Error: {e}")
