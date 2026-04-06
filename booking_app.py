@@ -233,7 +233,7 @@ for r in results[:3]:
     (df["pg_id"] == r["pg_id"]) &
     (df["location"] == r["location"]) &
     (df["available_beds"] > 0) &
-    (df["sharing_type"].astype(str).str.strip() == pref_sharing)
+    (df["sharing_type"] == pref_sharing.split()[0])  # ✅ FIX
 ]
 
     if not room_df.empty:
