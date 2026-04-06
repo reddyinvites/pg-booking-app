@@ -309,6 +309,7 @@ for r in results[:3]:
             except Exception as e:
                 st.error(f"Error: {e}")
 
+
     # ---------------- CONDITION SCORE ----------------
     st.markdown("### 😣 PG Condition Score")
     st.write(f"⭐ {r['pain']} / 5")
