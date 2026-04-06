@@ -49,7 +49,6 @@ if df.empty:
 
 # ---------------- CLEAN ----------------
 df = df[df["available_beds"] > 0]
-df = df.drop_duplicates(subset=["pg_name", "location"])
 
 df[["area", "locality"]] = df["location"].str.split("-", expand=True)
 
@@ -99,7 +98,11 @@ def safe_float(val, default=5):
 # ---------------- SCORING ----------------
 results = []
 
-for _, row in df.iterrows():
+grouped = df.groupby(["pg_name", "location"])   # ✅ ADD THIS
+
+for (pg_name, location), group in grouped:      # ✅ CHANGE LOOP
+
+    row = group.iloc[0]   # IMPORTANT → keep same logic
 
     price_str = str(row["price"]).replace("₹", "").replace(",", "").strip()
     if not price_str.isdigit():
