@@ -238,88 +238,73 @@ for r in results[:3]:
 
     if not room_df.empty:
 
-        room_list = room_df["room_no"].astype(str).unique().tolist()
+    room_list = room_df["room_no"].astype(str).unique().tolist()
 
-        selected_room = st.selectbox(
-            f"🛏 Select Room - {r['pg']}",
-            room_list,
-            key=f"room_{r['pg']}"
-        )
+    selected_room = st.selectbox(
+        f"🛏 Select Room - {r['pg']}",
+        room_list,
+        key=f"room_{r['pg']}"
+    )
 
-        selected_room_data = room_df[
-            room_df["room_no"].astype(str) == selected_room
-        ]
+    selected_room_data = room_df[
+        room_df["room_no"].astype(str) == selected_room
+    ]
 
-        beds_left = int(selected_room_data["available_beds"].values[0])
-        st.info(f"🛏 Available Beds in Room {selected_room}: {beds_left}")
+    beds_left = int(selected_room_data["available_beds"].values[0])
+    st.info(f"🛏 Available Beds in Room {selected_room}: {beds_left}")
 
-        # ---------------- BOOK FORM ----------------
-        with st.form(f"book_form_{r['pg']}"):
+    # ✅ BOOK FORM MUST BE INSIDE THIS BLOCK
+    with st.form(f"book_form_{r['pg']}"):
 
-    name = st.text_input("👤 Your Name")
-    phone = st.text_input("📞 Phone Number")
-    move_date = st.date_input("📅 Move-in Date")
+        name = st.text_input("👤 Your Name")
+        phone = st.text_input("📞 Phone Number")
+        move_date = st.date_input("📅 Move-in Date")
 
-    submit = st.form_submit_button("🚀 Confirm Booking")
+        submit = st.form_submit_button("🚀 Confirm Booking")
 
-    if submit:
+        if submit:
 
-        if not name or not phone:
-            st.error("Please fill all details ❌")
+            if not name or not phone:
+                st.error("Please fill all details ❌")
 
-        else:
-            try:
-                from datetime import datetime
+            else:
+                try:
+                    from datetime import datetime
 
-                # ✅ CHECK ROOM DATA
-                if selected_room_data.empty:
-                    st.error("Room data not found ❌")
-                    st.stop()
+                    booking_sheet = client.open_by_key(PG_APP_ID).worksheet("Bookings")
 
-                # ✅ GET PG ID
-                pg_id = str(selected_room_data["pg_id"].values[0])
+                    pg_id = str(selected_room_data["pg_id"].values[0])
 
-                # ✅ OPEN BOOKINGS SHEET
-                booking_sheet = client.open_by_key(PG_APP_ID).worksheet("Bookings")
+                    booking_sheet.append_row([
+                        pg_id,
+                        name,
+                        phone,
+                        r["pg"],
+                        selected_room,
+                        pref_sharing,
+                        datetime.now().strftime("%Y-%m-%d"),
+                        "CONFIRMED"
+                    ])
 
-                # ✅ SAVE BOOKING
-                booking_sheet.append_row([
-                    pg_id,
-                    name,
-                    phone,
-                    r["pg"],
-                    selected_room,
-                    pref_sharing,
-                    datetime.now().strftime("%Y-%m-%d"),
-                    "CONFIRMED"
-                ])
+                    # reduce beds
+                    all_rows = sheet.get_all_records()
+                    headers = sheet.row_values(1)
+                    bed_col_index = headers.index("available_beds") + 1
 
-                # ---------------- REDUCE BED ----------------
-                all_rows = sheet.get_all_records()
-                headers = sheet.row_values(1)
+                    for i, row_data in enumerate(all_rows, start=2):
+                        if (
+                            str(row_data["pg_name"]) == str(r["pg"]) and
+                            str(row_data["room_no"]) == str(selected_room)
+                        ):
+                            current_beds = int(row_data["available_beds"])
+                            if current_beds > 0:
+                                sheet.update_cell(i, bed_col_index, current_beds - 1)
 
-                if "available_beds" not in headers:
-                    st.error("Column 'available_beds' not found ❌")
-                    st.stop()
+                    st.success("🎉 Booking Confirmed!")
+                    st.balloons()
 
-                bed_col_index = headers.index("available_beds") + 1
-
-                for i, row_data in enumerate(all_rows, start=2):
-
-                    if (
-                        str(row_data["pg_name"]) == str(r["pg"]) and
-                        str(row_data["room_no"]) == str(selected_room)
-                    ):
-                        current_beds = int(row_data["available_beds"])
-
-                        if current_beds > 0:
-                            sheet.update_cell(i, bed_col_index, current_beds - 1)
-
-                st.success("🎉 Booking Confirmed!")
-                st.balloons()
-
-            except Exception as e:
-                st.error(f"Error: {e}")
+                except Exception as e:
+                    st.error(f"Error: {e}")
 
     # ---------------- CONDITION SCORE ----------------
     st.markdown("### 😣 PG Condition Score")
