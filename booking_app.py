@@ -271,16 +271,22 @@ for r in results[:3]:
                     try:
                         booking_sheet = client.open_by_key(PG_APP_ID).worksheet("Bookings")
 
-                        booking_sheet.append_row([
-                            r["pg"],
-                            selected_room,
-                            r["location"],
-                            r["price"],
-                            name,
-                            phone,
-                            str(move_date),
-                            "CONFIRMED"
-                        ])
+           from datetime import datetime
+
+booking_sheet = client.open_by_key(PG_APP_ID).worksheet("Bookings")
+
+pg_id = str(selected_room_data["pg_id"].values[0])
+
+booking_sheet.append_row([
+    pg_id,                 # pg_id
+    name,                  # name
+    phone,                 # phone
+    r["pg"],               # pg_name
+    selected_room,         # room_no
+    pref_sharing,          # sharing
+    datetime.now().strftime("%Y-%m-%d"),  # booked_at
+    "CONFIRMED"            # status
+])
 
                         all_rows = sheet.get_all_records()
                         headers = sheet.row_values(1)
