@@ -230,10 +230,11 @@ for r in results[:3]:
     st.write(f"🛏 {r['beds']} Beds Available")
 
     room_df = df[
-        (df["pg_id"] == r["pg_id"]) &
-        (df["location"] == r["location"]) &
-        (df["available_beds"] > 0)
-    ]
+    (df["pg_id"] == r["pg_id"]) &
+    (df["location"] == r["location"]) &
+    (df["available_beds"] > 0) &
+    (df["sharing_type"].astype(str).str.strip() == pref_sharing)
+]
 
     if not room_df.empty:
 
