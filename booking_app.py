@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
-import random
 
 st.set_page_config(page_title="PG Match Engine", layout="centered")
 st.title("🏠 PG Match Engine (Smart Recommendation)")
@@ -49,7 +48,11 @@ if df.empty:
 
 # ---------------- CLEAN ----------------
 df = df[df["available_beds"] > 0]
-df[["area", "locality"]] = df["location"].str.split("-", expand=True)
+
+# FIX: safe split
+location_split = df["location"].str.split("-", n=1, expand=True)
+df["area"] = location_split[0].fillna("").str.strip()
+df["locality"] = location_split[1].fillna("").str.strip()
 
 # ---------------- SEARCH ----------------
 st.subheader("🎯 Your Preferences")
@@ -59,8 +62,8 @@ search = st.text_input("🔍 Search Area / Locality")
 if search:
     s = search.lower()
     df = df[
-        df["area"].str.lower().str.contains(s) |
-        df["locality"].str.lower().str.contains(s)
+        df["area"].str.lower().str.contains(s, na=False) |
+        df["locality"].str.lower().str.contains(s, na=False)
     ]
 
 # ---------------- DROPDOWNS ----------------
@@ -82,13 +85,12 @@ pref_food = st.selectbox("🍽 Food", ["Veg", "Non Veg", "Both"])
 pref_room_type = st.selectbox("🧊 Room Type", ["AC", "Non AC"])
 
 # ---------------- FILTER ----------------
-df = df[df["area"] == pref_area]
-df = df[df["locality"] == pref_locality]
+df = df[(df["area"] == pref_area) & (df["locality"] == pref_locality)]
 
 # ---------------- SAFE FLOAT ----------------
 def safe_float(val, default=5):
     try:
-        if val == "" or val is None:
+        if val in ["", None]:
             return default
         return float(val) / 2
     except:
@@ -96,7 +98,6 @@ def safe_float(val, default=5):
 
 # ---------------- SCORING ----------------
 results = []
-
 grouped = df.groupby(["pg_id", "pg_name", "location"])
 
 for (pg_id, pg_name, location), group in grouped:
@@ -113,6 +114,7 @@ for (pg_id, pg_name, location), group in grouped:
     reasons = []
     cons = []
 
+    # -------- PRICE LOGIC --------
     if price == pref_budget:
         score += 40
         reasons.append("Perfect budget match 🔥")
@@ -133,6 +135,7 @@ for (pg_id, pg_name, location), group in grouped:
     else:
         continue
 
+    # -------- MATCHING --------
     if row["area"] == pref_area:
         score += 20
         reasons.append("Area match")
@@ -145,22 +148,23 @@ for (pg_id, pg_name, location), group in grouped:
         score += 10
         reasons.append("Sharing matched")
 
-    if str(row.get("gender","")).lower() == pref_gender.lower():
+    if str(row.get("gender", "")).lower() == pref_gender.lower():
         score += 5
 
-    if str(row.get("food_type","")).lower() == pref_food.lower():
+    if str(row.get("food_type", "")).lower() == pref_food.lower():
         score += 5
 
-    if str(row.get("room_type","")).lower() == pref_room_type.lower():
+    if str(row.get("room_type", "")).lower() == pref_room_type.lower():
         score += 5
 
+    # -------- RATINGS --------
     food_s = safe_float(row.get("food_rating"))
     clean_s = safe_float(row.get("cleanliness"))
     safety_s = safe_float(row.get("safety"))
     maint_s = safe_float(row.get("maintenance_score"))
 
     noise_map = {"low": 5, "medium": 3.5, "high": 1.5}
-    noise_raw = str(row.get("noise_level","medium")).lower()
+    noise_raw = str(row.get("noise_level", "medium")).lower()
     noise_s = noise_map.get(noise_raw, 3.5)
 
     pain_score = round((food_s + clean_s + safety_s + maint_s + noise_s) / 5, 1)
@@ -175,16 +179,17 @@ for (pg_id, pg_name, location), group in grouped:
 
     biggest_issue = min(issues, key=issues.get)
 
+    # -------- CONS --------
     if price > pref_budget:
         cons.append(f"₹{price - pref_budget} above your budget")
 
     if row["sharing_type"] != pref_sharing:
         cons.append("Different sharing than your preference")
 
-    if str(row.get("room_type","")).lower() != pref_room_type.lower():
+    if str(row.get("room_type", "")).lower() != pref_room_type.lower():
         cons.append("Room type not matching")
 
-    if str(row.get("food_type","")).lower() != pref_food.lower():
+    if str(row.get("food_type", "")).lower() != pref_food.lower():
         cons.append("Food type mismatch")
 
     if int(row["available_beds"]) == 1:
@@ -220,6 +225,7 @@ for r in results[:3]:
 
     st.markdown(f"## 🏠 {r['pg']} — {r['score']}% Match")
 
+    # PRICE UI
     if r["price"] == pref_budget:
         st.success(f"💰 ₹{r['price']} (Perfect match 🔥)")
     elif r["price"] < pref_budget:
@@ -229,14 +235,16 @@ for r in results[:3]:
 
     st.write(f"🛏 {r['beds']} Beds Available")
 
+    # ---------------- ROOM SELECTION ----------------
     room_df = df[
-    (df["pg_id"] == r["pg_id"]) &
-    (df["location"] == r["location"]) &
-    (df["available_beds"] > 0) &
-    (df["sharing_type"].astype(str).str.strip() == pref_sharing)
-]
+        (df["pg_id"] == r["pg_id"]) &
+        (df["location"] == r["location"]) &
+        (df["available_beds"] > 0)
+    ]
 
-    if not room_df.empty:
+    if room_df.empty:
+        st.warning("No rooms available ❌")
+        continue
 
     room_list = room_df["room_no"].astype(str).unique().tolist()
 
@@ -246,73 +254,62 @@ for r in results[:3]:
         key=f"room_{r['pg_id']}"
     )
 
-    # rest of your code...
+    selected_room_data = room_df[
+        room_df["room_no"].astype(str) == selected_room
+    ]
 
-else:
-    st.warning("No rooms available for selected sharing ❌")
+    beds_left = int(selected_room_data["available_beds"].values[0])
+    st.info(f"🛏 Available Beds in Room {selected_room}: {beds_left}")
 
-        beds_left = int(selected_room_data["available_beds"].values[0])
-        st.info(f"🛏 Available Beds in Room {selected_room}: {beds_left}")
+    # ---------------- BOOKING ----------------
+    with st.form(f"book_form_{r['pg_id']}"):
 
-        # ---------------- BOOK FORM ----------------
-        with st.form(f"book_form_{r['pg_id']}"):
+        name = st.text_input("👤 Your Name")
+        phone = st.text_input("📞 Phone Number")
+        move_date = st.date_input("📅 Move-in Date")
 
-            name = st.text_input("👤 Your Name")
-            phone = st.text_input("📞 Phone Number")
-            move_date = st.date_input("📅 Move-in Date")
+        submit = st.form_submit_button("🚀 Confirm Booking")
 
-            submit = st.form_submit_button("🚀 Confirm Booking")
+        if submit:
 
-            if submit:
+            clean_phone = phone.replace("+91", "").replace("+", "").replace(" ", "").strip()
 
-                clean_phone = phone.replace("+91", "").replace("+", "").replace(" ", "").strip()
+            if not (clean_phone.isdigit() and len(clean_phone) == 10 and clean_phone.startswith(("6","7","8","9"))):
+                st.error("Enter valid Indian phone number ❌")
 
-                if not (clean_phone.isdigit() and len(clean_phone) == 10 and clean_phone.startswith(("6","7","8","9"))):
-                    st.error("Enter valid Indian phone number ❌")
+            else:
+                try:
+                    booking_sheet = client.open_by_key(PG_APP_ID).worksheet("Bookings")
 
-                else:
-                    try:
-                        booking_sheet = client.open_by_key(PG_APP_ID).worksheet("Bookings")
+                    booking_sheet.append_row([
+                        r["pg_id"], r["pg"], selected_room, r["location"],
+                        r["price"], name.strip(), clean_phone,
+                        str(move_date), "CONFIRMED"
+                    ])
 
-                        booking_sheet.append_row([
-                            r["pg_id"],
-                            r["pg"],
-                            selected_room,
-                            r["location"],
-                            r["price"],
-                            name.strip(),
-                            clean_phone,
-                            str(move_date),
-                            "CONFIRMED"
-                        ])
+                    all_rows = sheet.get_all_records()
+                    headers = [h.strip().lower() for h in sheet.row_values(1)]
+                    bed_col_index = headers.index("available_beds") + 1
 
-                        all_rows = sheet.get_all_records()
-                        headers = [h.strip().lower() for h in sheet.row_values(1)]
-                        bed_col_index = headers.index("available_beds") + 1
+                    for i, row_data in enumerate(all_rows, start=2):
+                        if (
+                            str(row_data["pg_id"]).strip() == str(r["pg_id"]).strip() and
+                            str(row_data["room_no"]).strip() == str(selected_room).strip()
+                        ):
+                            current_beds = int(row_data["available_beds"])
+                            if current_beds > 0:
+                                sheet.update_cell(i, bed_col_index, current_beds - 1)
 
-                        for i, row_data in enumerate(all_rows, start=2):
+                    st.success("🎉 Booking Confirmed!")
+                    st.balloons()
 
-                            if (
-                                str(row_data["pg_id"]).strip() == str(r["pg_id"]).strip() and
-                                str(row_data["room_no"]).strip() == str(selected_room).strip()
-                            ):
-                                current_beds = int(row_data["available_beds"])
+                    st.cache_data.clear()
+                    st.rerun()
 
-                                if current_beds > 0:
-                                    sheet.update_cell(i, bed_col_index, current_beds - 1)
+                except Exception as e:
+                    st.error(f"Error: {e}")
 
-                        st.success("🎉 Booking Confirmed!")
-                        st.balloons()
-
-                        st.cache_data.clear()
-                        st.rerun()
-
-                    except Exception as e:
-                        st.error(f"Error: {e}")
-
-    else:
-        st.warning("No rooms available ❌")
-
+    # ---------------- DETAILS ----------------
     st.markdown("### 😣 PG Condition Score")
     st.write(f"⭐ {r['pain']} / 5")
 
