@@ -37,8 +37,6 @@ if df.empty:
 
 # ---------------- CLEAN DATA ----------------
 df = df[df["available_beds"] > 0]
-
-# REMOVE DUPLICATE PGs (IMPORTANT)
 df = df.drop_duplicates(subset=["pg_name", "location"])
 
 # ---------------- SPLIT LOCATION ----------------
@@ -47,17 +45,25 @@ df[["area", "locality"]] = df["location"].str.split("-", expand=True)
 # ---------------- USER INPUT ----------------
 st.subheader("🎯 Your Preferences")
 
-pref_area = st.selectbox("📍 Area", sorted(df["area"].dropna().unique()))
+# ✅ SHOW ALL AREAS
+all_areas = sorted(df["area"].dropna().unique())
+pref_area = st.selectbox("📍 Area", all_areas)
 
+# ✅ LOCALITY BASED ON AREA
 filtered_localities = df[df["area"] == pref_area]["locality"].dropna().unique()
-pref_locality = st.selectbox("🏠 Locality", sorted(filtered_localities))
+pref_locality = st.selectbox(
+    "🏠 Locality",
+    sorted(filtered_localities) if len(filtered_localities) else ["No Data"]
+)
 
 pref_budget = st.number_input("💰 Budget", value=8000, step=500)
 
-pref_sharing = st.selectbox("🛏 Sharing", ["1 Sharing", "2 Sharing", "3 Sharing", "4 Sharing"])
+pref_sharing = st.selectbox(
+    "🛏 Sharing",
+    ["1 Sharing", "2 Sharing", "3 Sharing", "4 Sharing"]
+)
 
 pref_gender = st.selectbox("👤 Gender", ["Male", "Female", "Co-Living"])
-
 pref_food = st.selectbox("🍽 Food", ["Veg", "Non Veg", "Both"])
 
 # ---------------- SCORING ----------------
@@ -75,7 +81,7 @@ for _, row in df.iterrows():
     pros = []
     cons = []
 
-    # 💰 BUDGET LOGIC (FIXED)
+    # 💰 BUDGET LOGIC (IMPROVED)
     if price == pref_budget:
         score += 40
         reasons.append("Perfect budget match 🔥")
@@ -94,7 +100,7 @@ for _, row in df.iterrows():
 
         else:
             score += 10
-            cons.append("Too cheap (check quality)")
+            cons.append("Lower than your budget 💰")
 
     elif price <= pref_budget + 1000:
         score += 20
@@ -125,7 +131,7 @@ for _, row in df.iterrows():
     if str(row.get("food_type", "")).lower() == pref_food.lower():
         score += 5
 
-    # ✅ LIMIT SCORE
+    # ✅ LIMIT SCORE (IMPORTANT)
     score = max(0, min(100, int(score)))
 
     results.append({
@@ -149,7 +155,7 @@ st.subheader("🏆 Best PGs For You")
 if not results:
     st.error("No matching PGs found ❌")
 
-for i, r in enumerate(results[:5]):   # show top 5
+for i, r in enumerate(results[:5]):
 
     if i == 0:
         badge = "🥇 Best Match"
@@ -163,7 +169,7 @@ for i, r in enumerate(results[:5]):   # show top 5
 
     st.markdown(f"📍 {r['location']}")
 
-    # 💰 PRICE DISPLAY (FIXED)
+    # 💰 PRICE DISPLAY
     if r["price"] == pref_budget:
         st.success(f"💰 ₹{r['price']} (Perfect match 🔥)")
 
@@ -201,13 +207,15 @@ for i, r in enumerate(results[:5]):   # show top 5
     for reason in r["reasons"]:
         st.write("•", reason)
 
+    # 👍 PROS
     if r["pros"]:
         st.markdown("### 👍 Pros")
         for p in r["pros"]:
             st.write("✓", p)
 
+    # 💡 SOFT NOTE (REPLACED "CONSIDER")
     if r["cons"]:
-        st.markdown("### ⚠️ Consider")
+        st.markdown("### 💡 Note")
         for c in r["cons"]:
             st.write("•", c)
 
