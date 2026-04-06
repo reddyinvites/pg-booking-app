@@ -35,18 +35,32 @@ if df.empty:
     st.warning("No PG data available")
     st.stop()
 
-# ---------------- CLEAN ----------------
+# ---------------- CLEAN DATA ----------------
+df["location"] = df["location"].astype(str).str.strip()
+
+# ✅ SAFE SPLIT (FIXED BUG)
+df["area"] = df["location"].apply(lambda x: x.split("-")[0].strip() if "-" in x else "")
+df["locality"] = df["location"].apply(lambda x: x.split("-")[1].strip() if "-" in x else "")
+
+# REMOVE INVALID
+df = df[(df["area"] != "") & (df["locality"] != "")]
+
+# REMOVE DUPLICATES SAFELY
+df = df.drop_duplicates()
+
+# CONVERT NUMBERS
+df["price"] = pd.to_numeric(df["price"], errors="coerce")
+df["available_beds"] = pd.to_numeric(df["available_beds"], errors="coerce")
+
+# ONLY AVAILABLE ROOMS
 df = df[df["available_beds"] > 0]
-df = df.drop_duplicates(subset=["pg_name", "location"])
 
-# split location
-df[["area", "locality"]] = df["location"].str.split("-", expand=True)
-
-# ---------------- SEARCH ----------------
+# ---------------- UI ----------------
 st.subheader("🎯 Your Preferences")
 
 search = st.text_input("🔍 Search Area / Locality")
 
+# SEARCH FILTER
 if search:
     s = search.lower()
     df = df[
@@ -55,12 +69,16 @@ if search:
     ]
 
 # ---------------- DROPDOWNS ----------------
-all_areas = sorted(df["area"].dropna().unique())
-all_localities = sorted(df["locality"].dropna().unique())
+areas = sorted(df["area"].dropna().unique())
+pref_area = st.selectbox("📍 Area", areas)
 
-pref_area = st.selectbox("📍 Area", ["All"] + all_areas)
-pref_locality = st.selectbox("🏠 Locality", ["All"] + all_localities)
+# LOCALITY BASED ON AREA (FIXED)
+localities = df[df["area"] == pref_area]["locality"]
+localities = sorted(localities.dropna().unique())
 
+pref_locality = st.selectbox("🏠 Locality", localities)
+
+# OTHER FILTERS
 pref_budget = st.number_input("💰 Budget", value=8000, step=500)
 
 pref_sharing = st.selectbox(
@@ -72,34 +90,22 @@ pref_gender = st.selectbox("👤 Gender", ["Male", "Female", "Co-Living"])
 pref_food = st.selectbox("🍽 Food", ["Veg", "Non Veg", "Both"])
 
 # ---------------- FILTER ----------------
-if pref_area != "All":
-    df = df[df["area"] == pref_area]
-
-if pref_locality != "All":
-    df = df[df["locality"] == pref_locality]
+df = df[
+    (df["area"] == pref_area) &
+    (df["locality"] == pref_locality)
+]
 
 # ---------------- SCORING ----------------
 results = []
 
 for _, row in df.iterrows():
 
-    # CLEAN PRICE
-    price_str = str(row["price"]).replace("₹", "").replace(",", "").strip()
-
-    if not price_str.isdigit():
-        continue
-
-    price = int(price_str)
-
-    if price < 2000 or price > 50000:
-        continue
-
+    price = int(row["price"])
     score = 0
     reasons = []
-    pros = []
-    cons = []
+    note = []
 
-    # 💰 BUDGET
+    # 💰 PRICE LOGIC
     if price == pref_budget:
         score += 40
         reasons.append("Perfect budget match 🔥")
@@ -114,42 +120,36 @@ for _, row in df.iterrows():
         elif diff <= 1500:
             score += 25
             reasons.append("Good value under budget")
-            pros.append("Saves money 💰")
+            note.append(f"Save ₹{diff}")
 
         else:
             score += 10
-            cons.append("Lower than your budget 💰")
+            note.append(f"Lower than your budget (Save ₹{diff})")
 
     elif price <= pref_budget + 1000:
         score += 20
-        cons.append("Slightly above budget")
+        note.append("Slightly above budget")
 
     else:
         continue
 
-    # LOCATION
-    if row["area"] == pref_area:
-        score += 20
-        reasons.append("Area match")
+    # MATCHES
+    score += 20
+    reasons.append("Exact locality match 📍")
 
-    if row["locality"] == pref_locality:
-        score += 20
-        reasons.append("Exact locality match")
-
-    # SHARING
     if row["sharing_type"] == pref_sharing:
         score += 10
-        reasons.append("Sharing matched")
+        reasons.append("Sharing matched 🛏")
 
-    # GENDER
     if str(row.get("gender", "")).lower() == pref_gender.lower():
         score += 5
+        reasons.append("Gender matched 👤")
 
-    # FOOD
     if str(row.get("food_type", "")).lower() == pref_food.lower():
         score += 5
+        reasons.append("Food matched 🍽")
 
-    score = max(0, min(100, int(score)))
+    score = min(100, int(score))
 
     results.append({
         "pg": row["pg_name"],
@@ -159,37 +159,27 @@ for _, row in df.iterrows():
         "phone": row["owner_number"],
         "score": score,
         "reasons": reasons,
-        "pros": pros,
-        "cons": cons
+        "note": note
     })
 
 # ---------------- SORT ----------------
-results = sorted(results, key=lambda x: x["score"], reverse=True)
+results = sorted(results, key=lambda x: x["score"], reverse=True)[:3]
 
 # ---------------- DISPLAY ----------------
 st.subheader("🏆 Best PGs For You")
 
-top_results = results[:3]
-
-if not top_results:
+if not results:
     st.error("No matching PGs found ❌")
 
-for i, r in enumerate(top_results):
+for i, r in enumerate(results):
 
-    if i == 0:
-        color = "#D4EDDA"
-        badge = "🥇 Best Match"
-    elif i == 1:
-        color = "#FFF3CD"
-        badge = "🥈 Great Option"
-    else:
-        color = "#E2E3E5"
-        badge = "🥉 Value Pick"
+    colors = ["#D4EDDA", "#FFF3CD", "#E2E3E5"]
+    badges = ["🥇 Best Match", "🥈 Great Option", "🥉 Value Pick"]
 
     st.markdown(f"""
-    <div style="background:{color};padding:15px;border-radius:15px;margin-bottom:10px">
+    <div style="background:{colors[i]};padding:15px;border-radius:15px;margin-bottom:10px">
         <h3>🏠 {r['pg']} — {r['score']}% Match</h3>
-        <b>{badge}</b><br>
+        <b>{badges[i]}</b><br>
         📍 {r['location']}
     </div>
     """, unsafe_allow_html=True)
@@ -206,15 +196,13 @@ for i, r in enumerate(top_results):
     # BEDS
     st.write(f"🛏 {r['beds']} Beds Available")
 
-    # URGENCY
     if r["beds"] == 1:
         st.error("🔥 Last bed available!")
     elif r["beds"] <= 2:
         st.warning("⚡ Only few beds left")
 
-    # SOCIAL PROOF
-    views = random.randint(20, 80)
-    st.caption(f"👀 {views} people viewed today")
+    # SOCIAL
+    st.caption(f"👀 {random.randint(30,80)} people viewed today")
 
     # CONTACT
     st.write(f"📞 {r['phone']}")
@@ -225,14 +213,10 @@ for i, r in enumerate(top_results):
     for reason in r["reasons"]:
         st.write("•", reason)
 
-    if r["pros"]:
-        st.markdown("### 👍 Pros")
-        for p in r["pros"]:
-            st.write("✓", p)
-
-    if r["cons"]:
+    # NOTE
+    if r["note"]:
         st.markdown("### 💡 Note")
-        for c in r["cons"]:
-            st.write("•", c)
+        for n in r["note"]:
+            st.write("•", n)
 
     st.divider()
