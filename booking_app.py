@@ -310,7 +310,7 @@ for r in results[:3]:
                         st.error(f"Error: {e}")
 
     else:
-        st.warning("No rooms available ❌")
+        st.warning("No rooms available for selected sharing ❌")
 
     st.markdown("### 😣 PG Condition Score")
     st.write(f"⭐ {r['pain']} / 5")
