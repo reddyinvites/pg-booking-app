@@ -231,6 +231,8 @@ st.subheader("🏆 Best PGs For You")
 
 BUSINESS_NUMBER = "917702656073"
 
+import urllib.parse   # ✅ move here (top of section)
+
 for r in results[:3]:
 
     st.markdown(f"## 🏠 {r['pg']} — {r['score']}% Match")
@@ -244,7 +246,7 @@ for r in results[:3]:
 
     st.write(f"🛏 {r['beds']} Beds Available")
 
-    # 🚀 BOOK BUTTON (YOUR BUSINESS)
+    # 🚀 BOOK BUTTON (FIXED POSITION)
     msg = f"""Hi 👋
 
 I'm interested in booking:
@@ -263,12 +265,12 @@ Please share:
 
 Thanks 🙂
 """
-    import urllib.parse
 
-st.link_button(
-    "🚀 Book Now",
-    f"https://wa.me/{BUSINESS_NUMBER}?text={urllib.parse.quote(msg)}"
-)
+    st.link_button(
+        "🚀 Book Now",
+        f"https://wa.me/{BUSINESS_NUMBER}?text={urllib.parse.quote(msg)}"
+    )
+
     # CONDITION SCORE
     st.markdown("### 😣 PG Condition Score")
     st.write(f"⭐ {r['pain']} / 5")
