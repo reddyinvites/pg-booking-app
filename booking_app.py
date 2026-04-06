@@ -271,10 +271,13 @@ for r in results[:3]:
             try:
                 from datetime import datetime
 
+                # ✅ OPEN CORRECT BOOKINGS SHEET
                 booking_sheet = client.open_by_key(PG_APP_ID).worksheet("Bookings")
 
+                # ✅ GET PG ID FROM SELECTED ROOM
                 pg_id = str(selected_room_data["pg_id"].values[0])
 
+                # ✅ SAVE BOOKING (MATCH SHEET COLUMNS)
                 booking_sheet.append_row([
                     pg_id,
                     name,
@@ -286,7 +289,7 @@ for r in results[:3]:
                     "CONFIRMED"
                 ])
 
-                # reduce beds
+                # ---------------- REDUCE BED ----------------
                 all_rows = sheet.get_all_records()
                 headers = sheet.row_values(1)
                 bed_col_index = headers.index("available_beds") + 1
