@@ -264,50 +264,47 @@ for r in results[:3]:
 
             if submit:
 
-    if not name or not phone:
-        st.error("Please fill all details ❌")
+                if not name or not phone:
+                    st.error("Please fill all details ❌")
+
+                else:
+                    try:
+                        booking_sheet = sh.worksheet("Bookings")
+
+                        booking_sheet.append_row([
+                            r["pg"],
+                            selected_room,
+                            r["location"],
+                            r["price"],
+                            name,
+                            phone,
+                            str(move_date),
+                            "CONFIRMED"
+                        ])
+
+                        all_rows = sheet.get_all_records()
+                        headers = sheet.row_values(1)
+                        bed_col_index = headers.index("available_beds") + 1
+
+                        for i, row_data in enumerate(all_rows, start=2):
+
+                            if (
+                                str(row_data["pg_name"]) == str(r["pg"]) and
+                                str(row_data["room_no"]) == str(selected_room)
+                            ):
+                                current_beds = int(row_data["available_beds"])
+
+                                if current_beds > 0:
+                                    sheet.update_cell(i, bed_col_index, current_beds - 1)
+
+                        st.success("🎉 Booking Confirmed!")
+                        st.balloons()
+
+                    except Exception as e:
+                        st.error(f"Error: {e}")
 
     else:
-        try:
-            from datetime import datetime
-
-            # ✅ OPEN BOOKINGS SHEET
-            booking_sheet = client.open_by_key(PG_APP_ID).worksheet("Bookings")
-
-            # ✅ GET PG ID
-            pg_id = str(selected_room_data["pg_id"].values[0])
-
-            # ✅ INSERT CORRECT DATA
-            booking_sheet.append_row([
-                pg_id,
-                name,
-                phone,
-                r["pg"],
-                selected_room,
-                pref_sharing,
-                datetime.now().strftime("%Y-%m-%d"),
-                "CONFIRMED"
-            ])
-
-            # ✅ REDUCE BEDS
-            all_rows = sheet.get_all_records()
-            headers = sheet.row_values(1)
-            bed_col_index = headers.index("available_beds") + 1
-
-            for i, row_data in enumerate(all_rows, start=2):
-                if (
-                    str(row_data["pg_name"]) == str(r["pg"]) and
-                    str(row_data["room_no"]) == str(selected_room)
-                ):
-                    current_beds = int(row_data["available_beds"])
-                    if current_beds > 0:
-                        sheet.update_cell(i, bed_col_index, current_beds - 1)
-
-            st.success("🎉 Booking Confirmed!")
-            st.balloons()
-
-        except Exception as e:
-            st.error(f"Error: {e}")
+        st.warning("No rooms available ❌")
 
     # ---------------- CONDITION SCORE ----------------
     st.markdown("### 😣 PG Condition Score")
