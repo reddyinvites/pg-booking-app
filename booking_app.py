@@ -230,13 +230,7 @@ for r in results[:3]:
     st.write(f"🛏 {r['beds']} Beds Available")
 
     # ---------------- ROOM SELECTION ----------------
-    room_df = df[
-        (df["pg_name"] == r["pg"]) &
-        (df["location"] == r["location"]) &
-        (df["available_beds"] > 0)
-    ]
-
-    if not room_df.empty:
+if not room_df.empty:
 
     room_list = room_df["room_no"].astype(str).unique().tolist()
 
@@ -253,7 +247,7 @@ for r in results[:3]:
     beds_left = int(selected_room_data["available_beds"].values[0])
     st.info(f"🛏 Available Beds in Room {selected_room}: {beds_left}")
 
-    # ✅ BOOK FORM MUST BE INSIDE THIS BLOCK
+    # ---------------- BOOK FORM ----------------
     with st.form(f"book_form_{r['pg']}"):
 
         name = st.text_input("👤 Your Name")
@@ -286,7 +280,7 @@ for r in results[:3]:
                         "CONFIRMED"
                     ])
 
-                    # reduce beds
+                    # Reduce beds
                     all_rows = sheet.get_all_records()
                     headers = sheet.row_values(1)
                     bed_col_index = headers.index("available_beds") + 1
@@ -305,6 +299,10 @@ for r in results[:3]:
 
                 except Exception as e:
                     st.error(f"Error: {e}")
+
+else:
+    st.warning("No rooms available ❌")
+    
 
     # ---------------- CONDITION SCORE ----------------
     st.markdown("### 😣 PG Condition Score")
