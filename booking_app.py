@@ -226,51 +226,86 @@ for _, row in df.iterrows():
 # ---------------- SORT ----------------
 results = sorted(results, key=lambda x: x["score"], reverse=True)
 
-# ---------------- DISPLAY ----------------
-st.subheader("🏆 Best PGs For You")
+# ---------------- DISPLAY 
+# ---------------- ROOM SELECTION ----------------
+room_df = df[
+    (df["pg_name"] == r["pg"]) &
+    (df["location"] == r["location"]) &
+    (df["available_beds"] > 0)
+]
 
-BUSINESS_NUMBER = "917702656073"
+if not room_df.empty:
 
-import urllib.parse   # ✅ move here (top of section)
+    room_list = room_df["room_no"].astype(str).unique().tolist()
 
-for r in results[:3]:
-
-    st.markdown(f"## 🏠 {r['pg']} — {r['score']}% Match")
-
-    if r["price"] == pref_budget:
-        st.success(f"💰 ₹{r['price']} (Perfect match 🔥)")
-    elif r["price"] < pref_budget:
-        st.info(f"💰 ₹{r['price']} (Save ₹{pref_budget - r['price']})")
-    else:
-        st.warning(f"💰 ₹{r['price']} (Above budget)")
-
-    st.write(f"🛏 {r['beds']} Beds Available")
-
-    # 🚀 BOOK BUTTON (FIXED POSITION)
-    msg = f"""Hi 👋
-
-I'm interested in booking:
-
-🏠 PG: {r['pg']}
-💰 Price: ₹{r['price']}
-📍 Location: {r['location']}
-🛏 Sharing: {pref_sharing}
-
-Looking for immediate move-in.
-
-Please share:
-• Availability
-• Photos & Videos
-• House Rules
-
-Thanks 🙂
-"""
-
-    st.link_button(
-        "🚀 Book Now",
-        f"https://wa.me/{BUSINESS_NUMBER}?text={urllib.parse.quote(msg)}"
+    selected_room = st.selectbox(
+        f"🛏 Select Room - {r['pg']}",
+        room_list,
+        key=f"room_{r['pg']}"
     )
 
+    # Show availability
+    selected_room_data = room_df[room_df["room_no"].astype(str) == selected_room]
+
+    beds_left = int(selected_room_data["available_beds"].values[0])
+    st.info(f"🛏 Available Beds in Room {selected_room}: {beds_left}")
+
+    # ---------------- BOOK FORM ----------------
+    with st.form(f"book_form_{r['pg']}"):
+
+        name = st.text_input("👤 Your Name")
+        phone = st.text_input("📞 Phone Number")
+        move_date = st.date_input("📅 Move-in Date")
+
+        submit = st.form_submit_button("🚀 Confirm Booking")
+
+        if submit:
+
+            if not name or not phone:
+                st.error("Please fill all details ❌")
+
+            else:
+                try:
+                    # ---------------- SAVE BOOKING ----------------
+                    booking_sheet = sh.worksheet("Bookings")
+
+                    booking_sheet.append_row([
+                        r["pg"],
+                        selected_room,   # ✅ ROOM LEVEL
+                        r["location"],
+                        r["price"],
+                        name,
+                        phone,
+                        str(move_date),
+                        "CONFIRMED"
+                    ])
+
+                    # ---------------- REDUCE BED ----------------
+                    all_rows = sheet.get_all_records()
+
+                    headers = sheet.row_values(1)
+                    bed_col_index = headers.index("available_beds") + 1
+                    room_col_index = headers.index("room_no")
+
+                    for i, row_data in enumerate(all_rows, start=2):
+
+                        if (
+                            str(row_data["pg_name"]) == str(r["pg"]) and
+                            str(row_data["room_no"]) == str(selected_room)
+                        ):
+                            current_beds = int(row_data["available_beds"])
+
+                            if current_beds > 0:
+                                sheet.update_cell(i, bed_col_index, current_beds - 1)
+
+                    st.success("🎉 Booking Confirmed!")
+                    st.balloons()
+
+                except Exception as e:
+                    st.error(f"Error: {e}")
+
+else:
+    st.warning("No rooms available ❌")
     # CONDITION SCORE
     st.markdown("### 😣 PG Condition Score")
     st.write(f"⭐ {r['pain']} / 5")
