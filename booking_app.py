@@ -254,7 +254,7 @@ for r in results[:3]:
         st.info(f"🛏 Available Beds in Room {selected_room}: {beds_left}")
 
         # ---------------- BOOK FORM ----------------
-        with st.form(f"book_form_{r['pg']}"):
+with st.form(f"book_form_{r['pg']}"):
 
     name = st.text_input("👤 Your Name")
     phone = st.text_input("📞 Phone Number")
