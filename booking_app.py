@@ -19,15 +19,25 @@ creds = Credentials.from_service_account_info(
 )
 
 client = gspread.authorize(creds)
-sheet = client.open_by_key("1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q").sheet1
+
+# ✅ SAFE CONNECTION
+try:
+    sh = client.open_by_key("1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q")
+    sheet = sh.sheet1
+except Exception as e:
+    st.error("❌ Unable to connect to Google Sheet")
+    st.stop()
 
 # ---------------- LOAD DATA ----------------
 @st.cache_data(ttl=20)
 def load_data():
-    df = pd.DataFrame(sheet.get_all_records())
-    if not df.empty:
-        df.columns = df.columns.str.lower().str.strip()
-    return df
+    try:
+        df = pd.DataFrame(sheet.get_all_records())
+        if not df.empty:
+            df.columns = df.columns.str.lower().str.strip()
+        return df
+    except:
+        return pd.DataFrame()
 
 df = load_data()
 
@@ -166,7 +176,6 @@ for _, row in df.iterrows():
 
     pain_score = round((food_s + clean_s + safety_s + maint_s + noise_s)/5,1)
 
-    # Biggest issue
     issues = {
         "Food not good": food_s,
         "Not very clean": clean_s,
@@ -229,7 +238,6 @@ for i, r in enumerate(results[:3]):
 
     st.markdown(f"## 🏠 {r['pg']} — {r['score']}% Match")
 
-    # PRICE
     if r["price"] == pref_budget:
         st.success(f"💰 ₹{r['price']} (Perfect match 🔥)")
     elif r["price"] < pref_budget:
@@ -239,7 +247,6 @@ for i, r in enumerate(results[:3]):
 
     st.write(f"🛏 {r['beds']} Beds Available")
 
-    # ---------------- PAIN SCORE ----------------
     st.markdown("### 😣 PG Condition Score")
     st.write(f"⭐ {r['pain']} / 5")
 
@@ -248,7 +255,6 @@ for i, r in enumerate(results[:3]):
     st.write(f"🔐 Safety → {r['safety_s']}")
     st.write(f"🛠 Maintenance → {r['maint_s']}")
 
-    # NOISE DISPLAY
     if r["noise_label"] == "Low":
         st.success("🔇 Noise → Low (Peaceful)")
     elif r["noise_label"] == "Medium":
@@ -259,12 +265,10 @@ for i, r in enumerate(results[:3]):
     st.markdown("### 🚨 Biggest Issue")
     st.error(r["big_issue"])
 
-    # WHY
     st.markdown("### 💡 Why this PG?")
     for reason in r["reasons"]:
         st.write("•", reason)
 
-    # WHY CHOOSE
     st.markdown("### ✅ Why choose this PG?")
     if r["food_s"] >= 4:
         st.write("✔ Good food quality 🍛")
@@ -273,7 +277,6 @@ for i, r in enumerate(results[:3]):
     if r["safety_s"] >= 4:
         st.write("✔ Safe environment 🔐")
 
-    # CONSIDER
     if r["cons"]:
         st.markdown("### ⚠️ Things to consider")
         for c in r["cons"]:
