@@ -90,7 +90,7 @@ def safe_float(val, default=5):
     try:
         if val == "" or val is None:
             return default
-        return float(val) / 2   # 🔥 FIX → convert 10 scale to 5 scale
+        return float(val) / 2
     except:
         return default
 
@@ -168,7 +168,6 @@ for _, row in df.iterrows():
     safety_s = safe_float(row.get("safety"))
     maint_s = safe_float(row.get("maintenance_score"))
 
-    # 🔥 NOISE CONVERSION
     noise_map = {
         "low": 5,
         "medium": 3.5,
@@ -180,7 +179,6 @@ for _, row in df.iterrows():
 
     pain_score = round((food_s + clean_s + safety_s + maint_s + noise_s) / 5, 1)
 
-    # BIGGEST ISSUE
     issues = {
         "Food not good": food_s,
         "Not very clean": clean_s,
@@ -191,7 +189,6 @@ for _, row in df.iterrows():
 
     biggest_issue = min(issues, key=issues.get)
 
-    # ---------------- CONSIDER ----------------
     if price > pref_budget:
         cons.append(f"₹{price - pref_budget} above your budget")
 
@@ -214,7 +211,6 @@ for _, row in df.iterrows():
         "location": row["location"],
         "price": price,
         "beds": int(row["available_beds"]),
-        "phone": row["owner_number"],
         "score": score,
         "reasons": reasons,
         "cons": cons,
@@ -233,6 +229,8 @@ results = sorted(results, key=lambda x: x["score"], reverse=True)
 # ---------------- DISPLAY ----------------
 st.subheader("🏆 Best PGs For You")
 
+BUSINESS_NUMBER = "917702656073"
+
 for r in results[:3]:
 
     st.markdown(f"## 🏠 {r['pg']} — {r['score']}% Match")
@@ -246,7 +244,14 @@ for r in results[:3]:
 
     st.write(f"🛏 {r['beds']} Beds Available")
 
-    # 🔥 PG CONDITION SCORE
+    # 🚀 BOOK BUTTON (YOUR BUSINESS)
+    msg = f"Hi, I want to book {r['pg']} for ₹{r['price']}"
+    st.link_button(
+        "🚀 Book Now",
+        f"https://wa.me/{BUSINESS_NUMBER}?text={msg.replace(' ', '%20')}"
+    )
+
+    # CONDITION SCORE
     st.markdown("### 😣 PG Condition Score")
     st.write(f"⭐ {r['pain']} / 5")
 
@@ -260,18 +265,15 @@ for r in results[:3]:
     elif r["noise_label"] == "Medium":
         st.warning("🔇 Noise → Medium")
     else:
-        st.error("🔇 Noise → High (Noisy area)")
+        st.error("🔇 Noise → High")
 
-    # 🚨 ISSUE
     st.markdown("### 🚨 Biggest Issue")
     st.error(r["big_issue"])
 
-    # WHY
     st.markdown("### 💡 Why this PG?")
     for reason in r["reasons"]:
         st.write("•", reason)
 
-    # CHOOSE
     st.markdown("### ✅ Why choose this PG?")
     if r["food_s"] >= 4:
         st.write("✔ Good food quality 🍛")
@@ -280,7 +282,6 @@ for r in results[:3]:
     if r["safety_s"] >= 4:
         st.write("✔ Safe environment 🔐")
 
-    # CONSIDER
     if r["cons"]:
         st.markdown("### ⚠️ Things to consider")
         for c in r["cons"]:
