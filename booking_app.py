@@ -217,8 +217,16 @@ for r in results[:3]:
 
     st.markdown(f"## 🏠 {r['pg']} — {r['score']}% Match")
 
+    if r["price"] == pref_budget:
+        st.success(f"💰 ₹{r['price']} (Perfect match 🔥)")
+    elif r["price"] < pref_budget:
+        st.info(f"💰 ₹{r['price']} (Save ₹{pref_budget - r['price']})")
+    else:
+        st.warning(f"💰 ₹{r['price']} (Above budget)")
+
     st.write(f"🛏 {r['beds']} Beds Available")
 
+    # ---------------- ROOM SELECTION ----------------
     room_df = df[
         (df["pg_name"] == r["pg"]) &
         (df["location"] == r["location"]) &
@@ -242,7 +250,7 @@ for r in results[:3]:
         beds_left = int(selected_room_data["available_beds"].values[0])
         st.info(f"🛏 Available Beds in Room {selected_room}: {beds_left}")
 
-        # ✅ FIXED FORM POSITION
+        # ---------------- BOOK FORM ----------------
         with st.form(f"book_form_{r['pg']}"):
 
             name = st.text_input("👤 Your Name")
@@ -252,17 +260,83 @@ for r in results[:3]:
             submit = st.form_submit_button("🚀 Confirm Booking")
 
             if submit:
-                try:
-                    booking_sheet = client.open_by_key(PG_APP_ID).worksheet("Bookings")
 
-                    pg_id = str(selected_room_data["pg_id"].values[0])
+                if not name or not phone:
+                    st.error("Please fill all details ❌")
 
-                    booking_sheet.append_row([
-                        pg_id, name, phone, r["pg"], selected_room, pref_sharing
-                    ])
+                else:
+                    try:
+                        booking_sheet = sh.worksheet("Bookings")
 
-                    st.success("🎉 Booking Confirmed!")
-                    st.balloons()
+                        booking_sheet.append_row([
+                            r["pg"],
+                            selected_room,
+                            r["location"],
+                            r["price"],
+                            name,
+                            phone,
+                            str(move_date),
+                            "CONFIRMED"
+                        ])
 
-                except Exception as e:
-                    st.error(f"Error: {e}")
+                        all_rows = sheet.get_all_records()
+                        headers = sheet.row_values(1)
+                        bed_col_index = headers.index("available_beds") + 1
+
+                        for i, row_data in enumerate(all_rows, start=2):
+
+                            if (
+                                str(row_data["pg_name"]) == str(r["pg"]) and
+                                str(row_data["room_no"]) == str(selected_room)
+                            ):
+                                current_beds = int(row_data["available_beds"])
+
+                                if current_beds > 0:
+                                    sheet.update_cell(i, bed_col_index, current_beds - 1)
+
+                        st.success("🎉 Booking Confirmed!")
+                        st.balloons()
+
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+
+    else:
+        st.warning("No rooms available ❌")
+
+    # ---------------- CONDITION SCORE ----------------
+    st.markdown("### 😣 PG Condition Score")
+    st.write(f"⭐ {r['pain']} / 5")
+
+    st.write(f"🍛 Food → {r['food_s']}")
+    st.write(f"🧼 Cleanliness → {r['clean_s']}")
+    st.write(f"🔐 Safety → {r['safety_s']}")
+    st.write(f"🛠 Maintenance → {r['maint_s']}")
+
+    if r["noise_label"] == "Low":
+        st.success("🔇 Noise → Low (Peaceful)")
+    elif r["noise_label"] == "Medium":
+        st.warning("🔇 Noise → Medium")
+    else:
+        st.error("🔇 Noise → High")
+
+    st.markdown("### 🚨 Biggest Issue")
+    st.error(r["big_issue"])
+
+    st.markdown("### 💡 Why this PG?")
+    for reason in r["reasons"]:
+        st.write("•", reason)
+
+    st.markdown("### ✅ Why choose this PG?")
+    if r["food_s"] >= 4:
+        st.write("✔ Good food quality 🍛")
+    if r["clean_s"] >= 4:
+        st.write("✔ Clean rooms 🧼")
+    if r["safety_s"] >= 4:
+        st.write("✔ Safe environment 🔐")
+
+    if r["cons"]:
+        st.markdown("### ⚠️ Things to consider")
+        for c in r["cons"]:
+            st.write("•", c)
+
+    st.divider()
