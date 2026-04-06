@@ -19,25 +19,15 @@ creds = Credentials.from_service_account_info(
 )
 
 client = gspread.authorize(creds)
-
-# ✅ SAFE CONNECTION
-try:
-    sh = client.open_by_key("1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q")
-    sheet = sh.sheet1
-except Exception as e:
-    st.error("❌ Unable to connect to Google Sheet")
-    st.stop()
+sheet = client.open_by_key("1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q").sheet1
 
 # ---------------- LOAD DATA ----------------
 @st.cache_data(ttl=20)
 def load_data():
-    try:
-        df = pd.DataFrame(sheet.get_all_records())
-        if not df.empty:
-            df.columns = df.columns.str.lower().str.strip()
-        return df
-    except:
-        return pd.DataFrame()
+    df = pd.DataFrame(sheet.get_all_records())
+    if not df.empty:
+        df.columns = df.columns.str.lower().str.strip()
+    return df
 
 df = load_data()
 
@@ -84,15 +74,6 @@ pref_room_type = st.selectbox("🧊 Room Type", ["AC", "Non AC"])
 # ---------------- FILTER ----------------
 df = df[df["area"] == pref_area]
 df = df[df["locality"] == pref_locality]
-
-# ---------------- SAFE FLOAT ----------------
-def safe_float(val, default=3):
-    try:
-        if val == "" or val is None:
-            return default
-        return float(val)
-    except:
-        return default
 
 # ---------------- SCORING ----------------
 results = []
@@ -164,31 +145,7 @@ for _, row in df.iterrows():
     if str(row.get("room_type","")).lower() == pref_room_type.lower():
         score += 5
 
-    # ---------------- PAIN SCORE ----------------
-    food_s = safe_float(row.get("food_rating"))
-    clean_s = safe_float(row.get("cleanliness"))
-    safety_s = safe_float(row.get("safety"))
-    maint_s = safe_float(row.get("maintenance_score"))
-
-    noise_map = {"low":5, "medium":3, "high":1}
-    noise_raw = str(row.get("noise_level","medium")).lower()
-    noise_s = noise_map.get(noise_raw, 3)
-
-    pain_score = round((food_s + clean_s + safety_s + maint_s + noise_s)/5,1)
-
-    issues = {
-        "Food not good": food_s,
-        "Not very clean": clean_s,
-        "Maintenance issue": maint_s,
-        "Safety concern": safety_s,
-        "Too noisy": noise_s
-    }
-
-    biggest_issue = min(issues, key=issues.get)
-
-    # ---------------- CONSIDER ----------------
-    cons = []
-
+    # CONS
     if price > pref_budget:
         cons.append(f"₹{price - pref_budget} above your budget")
 
@@ -199,10 +156,13 @@ for _, row in df.iterrows():
         cons.append("Different sharing than your preference")
 
     if str(row.get("room_type","")).lower() != pref_room_type.lower():
-        cons.append("Room type not matching")
+        cons.append("Room type mismatch")
 
     if str(row.get("food_type","")).lower() != pref_food.lower():
         cons.append("Food type mismatch")
+
+    if str(row.get("gender","")).lower() != pref_gender.lower():
+        cons.append("Gender mismatch")
 
     if int(row["available_beds"]) == 1:
         cons.append("Only 1 bed left")
@@ -218,14 +178,7 @@ for _, row in df.iterrows():
         "score": score,
         "reasons": reasons,
         "pros": pros,
-        "cons": cons,
-        "pain": pain_score,
-        "food_s": food_s,
-        "clean_s": clean_s,
-        "safety_s": safety_s,
-        "maint_s": maint_s,
-        "noise_label": noise_raw.capitalize(),
-        "big_issue": biggest_issue
+        "cons": cons
     })
 
 # ---------------- SORT ----------------
@@ -234,49 +187,91 @@ results = sorted(results, key=lambda x: x["score"], reverse=True)
 # ---------------- DISPLAY ----------------
 st.subheader("🏆 Best PGs For You")
 
-for i, r in enumerate(results[:3]):
+top_results = results[:3]
 
-    st.markdown(f"## 🏠 {r['pg']} — {r['score']}% Match")
+if not top_results:
+    st.error("No matching PGs found ❌")
 
-    if r["price"] == pref_budget:
-        st.success(f"💰 ₹{r['price']} (Perfect match 🔥)")
-    elif r["price"] < pref_budget:
-        st.info(f"💰 ₹{r['price']} (Save ₹{pref_budget - r['price']})")
+for i, r in enumerate(top_results):
+
+    if i == 0:
+        color = "#D4EDDA"
+        badge = "🥇 Best Match"
+    elif i == 1:
+        color = "#FFF3CD"
+        badge = "🥈 Great Option"
     else:
-        st.warning(f"💰 ₹{r['price']} (Above budget)")
+        color = "#E2E3E5"
+        badge = "🥉 Value Pick"
 
+    st.markdown(f"""
+    <div style="background:{color};padding:15px;border-radius:15px;margin-bottom:10px">
+        <h3>🏠 {r['pg']} — {r['score']}% Match</h3>
+        <b>{badge}</b><br>
+        📍 {r['location']}
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 💰 PRICE UI
+    if r["price"] == pref_budget:
+        st.markdown(f"""
+        <div style="background:#D4EDDA;padding:10px;border-radius:10px">
+        💰 ₹{r['price']} (Perfect match 🔥)
+        </div>
+        """, unsafe_allow_html=True)
+
+    elif r["price"] < pref_budget:
+        st.markdown(f"""
+        <div style="background:#D1ECF1;padding:10px;border-radius:10px">
+        💰 ₹{r['price']} (Save ₹{pref_budget - r['price']})
+        </div>
+        """, unsafe_allow_html=True)
+
+    else:
+        st.markdown(f"""
+        <div style="background:#F8D7DA;padding:10px;border-radius:10px">
+        💰 ₹{r['price']} (Above budget)
+        </div>
+        """, unsafe_allow_html=True)
+
+    # 🛏 BEDS
     st.write(f"🛏 {r['beds']} Beds Available")
 
-    st.markdown("### 😣 PG Condition Score")
-    st.write(f"⭐ {r['pain']} / 5")
+    # 🔥 URGENCY UI
+    if r["beds"] == 1:
+        st.markdown("""
+        <div style="background:#F8D7DA;padding:10px;border-radius:10px">
+        🔥 <b>Last bed available!</b>
+        </div>
+        """, unsafe_allow_html=True)
 
-    st.write(f"🍛 Food → {r['food_s']}")
-    st.write(f"🧼 Cleanliness → {r['clean_s']}")
-    st.write(f"🔐 Safety → {r['safety_s']}")
-    st.write(f"🛠 Maintenance → {r['maint_s']}")
+    elif r["beds"] <= 2:
+        st.markdown("""
+        <div style="background:#FFF3CD;padding:10px;border-radius:10px">
+        ⚡ <b>Only few beds left</b>
+        </div>
+        """, unsafe_allow_html=True)
 
-    if r["noise_label"] == "Low":
-        st.success("🔇 Noise → Low (Peaceful)")
-    elif r["noise_label"] == "Medium":
-        st.warning("🔇 Noise → Medium")
-    else:
-        st.error("🔇 Noise → High (Noisy area)")
+    # 👀 SOCIAL PROOF
+    views = random.randint(30, 90)
 
-    st.markdown("### 🚨 Biggest Issue")
-    st.error(r["big_issue"])
+    st.markdown(f"""
+    <div style="color:gray;font-size:13px">
+    👀 {views} people viewed today <br>
+    ⏳ Prices may increase soon
+    </div>
+    """, unsafe_allow_html=True)
 
+    # 📞 CONTACT
+    st.write(f"📞 {r['phone']}")
+    st.link_button("📲 WhatsApp Now", f"https://wa.me/{r['phone']}")
+
+    # 💡 WHY THIS PG
     st.markdown("### 💡 Why this PG?")
     for reason in r["reasons"]:
         st.write("•", reason)
 
-    st.markdown("### ✅ Why choose this PG?")
-    if r["food_s"] >= 4:
-        st.write("✔ Good food quality 🍛")
-    if r["clean_s"] >= 4:
-        st.write("✔ Clean rooms 🧼")
-    if r["safety_s"] >= 4:
-        st.write("✔ Safe environment 🔐")
-
+    # ⚠️ THINGS TO CONSIDER
     if r["cons"]:
         st.markdown("### ⚠️ Things to consider")
         for c in r["cons"]:
