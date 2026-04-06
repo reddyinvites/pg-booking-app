@@ -91,95 +91,86 @@ for _, row in df.iterrows():
     pros = []
     cons = []
 
-    # ---------------- PAIN SCORE ----------------
-    def norm(x):
-        try:
-            return round(float(x) / 2, 1)
-        except:
-            return 3
-
-    food_s = norm(row.get("food_rating", 6))
-    clean_s = norm(row.get("cleanliness_score", 6))
-    safety_s = norm(row.get("safety", 6))
-
-    noise_map = {"low":5, "medium":3, "high":1}
-    noise_s = noise_map.get(str(row.get("noise_level","medium")).lower(), 3)
-
-    pain_score = round((food_s + clean_s + safety_s + noise_s) / 4, 1)
-
-    pain_dict = {
-        "Food": food_s,
-        "Cleanliness": clean_s,
-        "Noise": noise_s,
-        "Safety": safety_s
-    }
-
-    worst = min(pain_dict, key=pain_dict.get)
-
-    pain_msg = {
-        "Food": "⚠️ Food quality is low",
-        "Cleanliness": "⚠️ Not very clean",
-        "Noise": "⚠️ Too noisy",
-        "Safety": "⚠️ Safety concerns"
-    }
-
-    biggest_pain = pain_msg.get(worst, "")
-    if pain_score >= 4:
-        biggest_pain = "✅ Clean & peaceful stay"
-
-    # ---------------- WHY THIS PG ----------------
+    # 💰 BUDGET
     if price == pref_budget:
         score += 40
         reasons.append("Perfect budget match 🔥")
+
     elif price < pref_budget:
-        score += 30
-        reasons.append("Fits within your budget")
+        diff = pref_budget - price
+
+        if diff <= 500:
+            score += 35
+            reasons.append("Very close to your budget")
+
+        elif diff <= 1500:
+            score += 25
+            reasons.append("Good value under budget")
+            pros.append("Saves money 💰")
+
+        else:
+            score += 10
+            cons.append("Lower than your budget")
+
     elif price <= pref_budget + 1000:
         score += 20
-        reasons.append("Slightly above your budget")
+        cons.append("Slightly above budget")
+
     else:
         continue
 
+    # LOCATION
     if row["area"] == pref_area:
         score += 20
-        reasons.append("Located in your preferred area")
+        reasons.append("Area match")
 
     if row["locality"] == pref_locality:
         score += 20
         reasons.append("Exact locality match")
 
+    # SHARING
     if row["sharing_type"] == pref_sharing:
         score += 10
-        reasons.append("Sharing preference matched")
+        reasons.append("Sharing matched")
 
+    # GENDER
+    if str(row.get("gender","")).lower() == pref_gender.lower():
+        score += 5
+
+    # FOOD
     if str(row.get("food_type","")).lower() == pref_food.lower():
         score += 5
-        reasons.append("Food preference matched")
 
+    # ROOM TYPE
     if str(row.get("room_type","")).lower() == pref_room_type.lower():
         score += 5
-        reasons.append("Room type matched")
 
-    # ---------------- WHY CHOOSE THIS PG (SMART) ----------------
-    if price < pref_budget:
-        pros.append("Budget friendly 💰")
+    # ---------------- PAIN SCORE ----------------
+    food_s = float(row.get("food_rating", 3))
+    clean_s = float(row.get("cleanliness", 3))
+    safety_s = float(row.get("safety", 3))
+    maint_s = float(row.get("maintenance_score", 3))
 
-    if food_s >= 4:
-        pros.append("Good food quality 🍛")
+    noise_map = {"low":5, "medium":3, "high":1}
+    noise_raw = str(row.get("noise_level","medium")).lower()
+    noise_s = noise_map.get(noise_raw, 3)
 
-    if clean_s >= 4:
-        pros.append("Very clean & hygienic 🧼")
+    pain_score = round((food_s + clean_s + safety_s + maint_s + noise_s)/5,1)
 
-    if safety_s >= 4:
-        pros.append("Safe environment 🔐")
+    # Biggest issue
+    issues = {
+        "Food not good": food_s,
+        "Not very clean": clean_s,
+        "Maintenance issue": maint_s,
+        "Safety concern": safety_s,
+        "Too noisy": noise_s
+    }
 
-    if noise_s >= 4:
-        pros.append("Peaceful stay 🔇")
+    biggest_issue = min(issues, key=issues.get)
 
-    if int(row["available_beds"]) > 2:
-        pros.append("Good availability")
+    # ---------------- CONSIDER ----------------
+    cons = []
 
-    # ---------------- THINGS TO CONSIDER ----------------
     if price > pref_budget:
         cons.append(f"₹{price - pref_budget} above your budget")
 
@@ -210,12 +201,13 @@ for _, row in df.iterrows():
         "reasons": reasons,
         "pros": pros,
         "cons": cons,
-        "pain_score": pain_score,
+        "pain": pain_score,
         "food_s": food_s,
         "clean_s": clean_s,
         "safety_s": safety_s,
-        "noise_s": noise_s,
-        "biggest_pain": biggest_pain
+        "maint_s": maint_s,
+        "noise_label": noise_raw.capitalize(),
+        "big_issue": biggest_issue
     })
 
 # ---------------- SORT ----------------
@@ -224,30 +216,9 @@ results = sorted(results, key=lambda x: x["score"], reverse=True)
 # ---------------- DISPLAY ----------------
 st.subheader("🏆 Best PGs For You")
 
-top_results = results[:3]
+for i, r in enumerate(results[:3]):
 
-if not top_results:
-    st.error("No matching PGs found ❌")
-
-for i, r in enumerate(top_results):
-
-    if i == 0:
-        color = "#D4EDDA"
-        badge = "🥇 Best Match"
-    elif i == 1:
-        color = "#FFF3CD"
-        badge = "🥈 Great Option"
-    else:
-        color = "#E2E3E5"
-        badge = "🥉 Value Pick"
-
-    st.markdown(f"""
-    <div style="background:{color};padding:15px;border-radius:15px;margin-bottom:10px">
-        <h3>🏠 {r['pg']} — {r['score']}% Match</h3>
-        <b>{badge}</b><br>
-        📍 {r['location']}
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(f"## 🏠 {r['pg']} — {r['score']}% Match")
 
     # PRICE
     if r["price"] == pref_budget:
@@ -257,27 +228,41 @@ for i, r in enumerate(top_results):
     else:
         st.warning(f"💰 ₹{r['price']} (Above budget)")
 
-    # PAIN SCORE UI
+    st.write(f"🛏 {r['beds']} Beds Available")
+
+    # ---------------- PAIN SCORE DISPLAY ----------------
     st.markdown("### 😣 PG Condition Score")
-    st.write(f"⭐ {r['pain_score']} / 5")
+    st.write(f"⭐ {r['pain']} / 5")
+
     st.write(f"🍛 Food → {r['food_s']}")
     st.write(f"🧼 Cleanliness → {r['clean_s']}")
     st.write(f"🔐 Safety → {r['safety_s']}")
-    st.write(f"🔇 Noise → {r['noise_s']}")
+    st.write(f"🛠 Maintenance → {r['maint_s']}")
+
+    # ✅ FIXED NOISE DISPLAY
+    if r["noise_label"] == "Low":
+        st.success("🔇 Noise → Low (Peaceful)")
+    elif r["noise_label"] == "Medium":
+        st.warning("🔇 Noise → Medium")
+    else:
+        st.error("🔇 Noise → High (Noisy area)")
 
     st.markdown("### 🚨 Biggest Issue")
-    st.write(r["biggest_pain"])
+    st.error(r["big_issue"])
 
-    # WHY THIS PG
+    # WHY
     st.markdown("### 💡 Why this PG?")
     for reason in r["reasons"]:
         st.write("•", reason)
 
-    # WHY CHOOSE
-    if r["pros"]:
-        st.markdown("### ✅ Why choose this PG?")
-        for p in r["pros"]:
-            st.write("✔", p)
+    # CHOOSE
+    st.markdown("### ✅ Why choose this PG?")
+    if r["food_s"] >= 4:
+        st.write("✔ Good food quality 🍛")
+    if r["clean_s"] >= 4:
+        st.write("✔ Clean rooms 🧼")
+    if r["safety_s"] >= 4:
+        st.write("✔ Safe environment 🔐")
 
     # CONSIDER
     if r["cons"]:
