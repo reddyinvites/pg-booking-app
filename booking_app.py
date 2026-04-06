@@ -3,7 +3,6 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 import random
-import urllib.parse   # ✅ ADDED
 
 st.set_page_config(page_title="PG Match Engine", layout="centered")
 st.title("🏠 PG Match Engine (Smart Recommendation)")
@@ -190,7 +189,6 @@ for _, row in df.iterrows():
 
     biggest_issue = min(issues, key=issues.get)
 
-    # ---------------- CONSIDER ----------------
     if price > pref_budget:
         cons.append(f"₹{price - pref_budget} above your budget")
 
@@ -228,42 +226,65 @@ for _, row in df.iterrows():
 # ---------------- SORT ----------------
 results = sorted(results, key=lambda x: x["score"], reverse=True)
 
-# ✅ BUSINESS NUMBER
-BUSINESS_NUMBER = "917702656073"
-
 # ---------------- DISPLAY ----------------
 st.subheader("🏆 Best PGs For You")
+
+BUSINESS_NUMBER = "917702656073"
 
 for r in results[:3]:
 
     st.markdown(f"## 🏠 {r['pg']} — {r['score']}% Match")
 
-    st.write(f"💰 ₹{r['price']}")
+    if r["price"] == pref_budget:
+        st.success(f"💰 ₹{r['price']} (Perfect match 🔥)")
+    elif r["price"] < pref_budget:
+        st.info(f"💰 ₹{r['price']} (Save ₹{pref_budget - r['price']})")
+    else:
+        st.warning(f"💰 ₹{r['price']} (Above budget)")
+
     st.write(f"🛏 {r['beds']} Beds Available")
 
-    # ✅ BOOK BUTTON ADDED (NO CHANGE OTHER LOGIC)
-    msg = f"""Hi 👋  
-
-I'm interested in booking:  
-
-🏠 PG: {r['pg']}  
-💰 Price: ₹{r['price']}  
-📍 Location: {r['location']}  
-🛏 Sharing: {pref_sharing}  
-
-Looking for immediate move-in.  
-
-Please share:  
-• Availability  
-• Photos & Videos  
-• House Rules  
-
-Thanks 🙂  
-"""
-
+    # 🚀 BOOK BUTTON (YOUR BUSINESS)
+    msg = f"Hi, I want to book {r['pg']} for ₹{r['price']}"
     st.link_button(
         "🚀 Book Now",
-        f"https://wa.me/{BUSINESS_NUMBER}?text={urllib.parse.quote(msg)}"
+        f"https://wa.me/{BUSINESS_NUMBER}?text={msg.replace(' ', '%20')}"
     )
+
+    # CONDITION SCORE
+    st.markdown("### 😣 PG Condition Score")
+    st.write(f"⭐ {r['pain']} / 5")
+
+    st.write(f"🍛 Food → {r['food_s']}")
+    st.write(f"🧼 Cleanliness → {r['clean_s']}")
+    st.write(f"🔐 Safety → {r['safety_s']}")
+    st.write(f"🛠 Maintenance → {r['maint_s']}")
+
+    if r["noise_label"] == "Low":
+        st.success("🔇 Noise → Low (Peaceful)")
+    elif r["noise_label"] == "Medium":
+        st.warning("🔇 Noise → Medium")
+    else:
+        st.error("🔇 Noise → High")
+
+    st.markdown("### 🚨 Biggest Issue")
+    st.error(r["big_issue"])
+
+    st.markdown("### 💡 Why this PG?")
+    for reason in r["reasons"]:
+        st.write("•", reason)
+
+    st.markdown("### ✅ Why choose this PG?")
+    if r["food_s"] >= 4:
+        st.write("✔ Good food quality 🍛")
+    if r["clean_s"] >= 4:
+        st.write("✔ Clean rooms 🧼")
+    if r["safety_s"] >= 4:
+        st.write("✔ Safe environment 🔐")
+
+    if r["cons"]:
+        st.markdown("### ⚠️ Things to consider")
+        for c in r["cons"]:
+            st.write("•", c)
 
     st.divider()
