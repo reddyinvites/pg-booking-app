@@ -37,19 +37,19 @@ if df.empty:
 
 # ---------------- CLEAN DATA ----------------
 df = df[df["available_beds"] > 0]
+
+# remove duplicates
 df = df.drop_duplicates(subset=["pg_name", "location"])
 
-# ---------------- SPLIT LOCATION ----------------
+# split location
 df[["area", "locality"]] = df["location"].str.split("-", expand=True)
 
 # ---------------- USER INPUT ----------------
 st.subheader("🎯 Your Preferences")
 
-# ✅ SHOW ALL AREAS
 all_areas = sorted(df["area"].dropna().unique())
 pref_area = st.selectbox("📍 Area", all_areas)
 
-# ✅ LOCALITY BASED ON AREA
 filtered_localities = df[df["area"] == pref_area]["locality"].dropna().unique()
 pref_locality = st.selectbox(
     "🏠 Locality",
@@ -71,9 +71,16 @@ results = []
 
 for _, row in df.iterrows():
 
-    try:
-        price = int(float(row["price"]))
-    except:
+    # 🔥 CLEAN PRICE (IMPORTANT FIX)
+    price_str = str(row["price"]).replace("₹", "").replace(",", "").strip()
+
+    if not price_str.isdigit():
+        continue
+
+    price = int(price_str)
+
+    # ❌ REMOVE WRONG DATA
+    if price < 2000 or price > 50000:
         continue
 
     score = 0
@@ -81,7 +88,7 @@ for _, row in df.iterrows():
     pros = []
     cons = []
 
-    # 💰 BUDGET LOGIC (IMPROVED)
+    # 💰 BUDGET LOGIC
     if price == pref_budget:
         score += 40
         reasons.append("Perfect budget match 🔥")
@@ -131,7 +138,7 @@ for _, row in df.iterrows():
     if str(row.get("food_type", "")).lower() == pref_food.lower():
         score += 5
 
-    # ✅ LIMIT SCORE (IMPORTANT)
+    # ✅ LIMIT SCORE
     score = max(0, min(100, int(score)))
 
     results.append({
@@ -169,7 +176,7 @@ for i, r in enumerate(results[:5]):
 
     st.markdown(f"📍 {r['location']}")
 
-    # 💰 PRICE DISPLAY
+    # 💰 PRICE DISPLAY (FIXED UX)
     if r["price"] == pref_budget:
         st.success(f"💰 ₹{r['price']} (Perfect match 🔥)")
 
@@ -179,7 +186,7 @@ for i, r in enumerate(results[:5]):
         if diff <= 500:
             st.info(f"💰 ₹{r['price']} (Close to budget)")
         else:
-            st.info(f"💰 ₹{r['price']} (₹{diff} cheaper 💰)")
+            st.info(f"💰 ₹{r['price']} (Save ₹{diff})")
 
     else:
         st.warning(f"💰 ₹{r['price']} (Above budget)")
@@ -213,7 +220,7 @@ for i, r in enumerate(results[:5]):
         for p in r["pros"]:
             st.write("✓", p)
 
-    # 💡 SOFT NOTE (REPLACED "CONSIDER")
+    # 💡 NOTE
     if r["cons"]:
         st.markdown("### 💡 Note")
         for c in r["cons"]:
