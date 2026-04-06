@@ -22,11 +22,12 @@ creds = Credentials.from_service_account_info(
 
 client = gspread.authorize(creds)
 
-# ---------------- SAFE CONNECTION ----------------
+# ---------------- CONNECT BOTH SHEETS ----------------
 try:
     sh = client.open_by_key("1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q")
 
-    sheet = sh.worksheet("rooms")   # ✅ FIXED (rooms sheet)
+    sheet_pg = sh.sheet1
+    sheet_rooms = sh.worksheet("rooms")
 
 except:
     st.error("❌ Unable to connect to Google Sheet")
@@ -36,20 +37,35 @@ except:
 @st.cache_data(ttl=20)
 def load_data():
     try:
-        df = pd.DataFrame(sheet.get_all_records())
-        if not df.empty:
-            df.columns = df.columns.str.lower().str.strip()
+        df_pg = pd.DataFrame(sheet_pg.get_all_records())
+        df_rooms = pd.DataFrame(sheet_rooms.get_all_records())
+
+        if not df_pg.empty:
+            df_pg.columns = df_pg.columns.str.lower().str.strip()
+
+        if not df_rooms.empty:
+            df_rooms.columns = df_rooms.columns.str.lower().str.strip()
 
         # FIX sharing format
-        df["sharing_type"] = (
-            df["sharing_type"]
+        df_rooms["sharing_type"] = (
+            df_rooms["sharing_type"]
             .astype(str)
             .str.replace("Sharing", "")
             .str.strip()
         )
 
+        # MERGE BOTH
+        df = pd.merge(
+            df_rooms,
+            df_pg,
+            on=["pg_id", "pg_name"],
+            how="left"
+        )
+
         return df
-    except:
+
+    except Exception as e:
+        st.error(e)
         return pd.DataFrame()
 
 df = load_data()
@@ -98,18 +114,8 @@ pref_room_type = st.selectbox("🧊 Room Type", ["AC", "Non AC"])
 # ---------------- FILTER ----------------
 df = df[(df["area"] == pref_area) & (df["locality"] == pref_locality)]
 
-# ---------------- SAFE FLOAT ----------------
-def safe_float(val, default=5):
-    try:
-        if val == "" or val is None:
-            return default
-        return float(val) / 2
-    except:
-        return default
-
 # ---------------- SCORING ----------------
 results = []
-
 grouped = df.groupby(["pg_id", "pg_name", "location"])
 
 for (pg_id, pg_name, location), group in grouped:
@@ -123,87 +129,26 @@ for (pg_id, pg_name, location), group in grouped:
     price = int(price_str)
 
     score = 0
-    reasons = []
-    cons = []
 
-    # PRICE
     if price == pref_budget:
         score += 40
-        reasons.append("Perfect budget match 🔥")
     elif price < pref_budget:
-        diff = pref_budget - price
-        if diff <= 500:
-            score += 35
-            reasons.append("Very close to your budget")
-        elif diff <= 1500:
-            score += 25
-            reasons.append("Good value under budget")
-        else:
-            score += 10
-            cons.append("Lower than your budget")
+        score += 30
     elif price <= pref_budget + 1000:
         score += 20
-        cons.append("Slightly above budget")
     else:
         continue
 
-    # MATCH
-    if row["area"] == pref_area:
-        score += 20
-        reasons.append("Area match")
-
-    if row["locality"] == pref_locality:
-        score += 20
-        reasons.append("Exact locality match")
-
     if str(row["sharing_type"]) == pref_sharing.split()[0]:
         score += 10
-        reasons.append("Sharing matched")
-
-    if str(row.get("gender","")).lower() == pref_gender.lower():
-        score += 5
-
-    if str(row.get("food_type","")).lower() == pref_food.lower():
-        score += 5
-
-    if str(row.get("room_type","")).lower() == pref_room_type.lower():
-        score += 5
-
-    # RATINGS
-    food_s = safe_float(row.get("food_rating"))
-    clean_s = safe_float(row.get("cleanliness"))
-    safety_s = safe_float(row.get("safety"))
-    maint_s = safe_float(row.get("maintenance_score"))
-
-    noise_map = {"low": 5, "medium": 3.5, "high": 1.5}
-    noise_raw = str(row.get("noise_level","medium")).lower()
-    noise_s = noise_map.get(noise_raw, 3.5)
-
-    pain_score = round((food_s + clean_s + safety_s + maint_s + noise_s) / 5, 1)
-
-    biggest_issue = "General issue"
-
-    if int(row["available_beds"]) == 1:
-        cons.append("Only 1 bed left")
-
-    score = max(0, min(100, int(score)))
 
     results.append({
         "pg_id": pg_id,
         "pg": pg_name,
         "location": location,
         "price": price,
-        "beds": int(group["available_beds"].sum()),  # ✅ FIXED
-        "score": score,
-        "reasons": reasons,
-        "cons": cons,
-        "pain": pain_score,
-        "food_s": food_s,
-        "clean_s": clean_s,
-        "safety_s": safety_s,
-        "maint_s": maint_s,
-        "noise_label": noise_raw.capitalize(),
-        "big_issue": biggest_issue
+        "beds": int(group["available_beds"].sum()),
+        "score": score
     })
 
 # ---------------- SORT ----------------
@@ -215,14 +160,7 @@ st.subheader("🏆 Best PGs For You")
 for r in results[:3]:
 
     st.markdown(f"## 🏠 {r['pg']} — {r['score']}% Match")
-
-    if r["price"] == pref_budget:
-        st.success(f"💰 ₹{r['price']} (Perfect match 🔥)")
-    elif r["price"] < pref_budget:
-        st.info(f"💰 ₹{r['price']}")
-    else:
-        st.warning(f"💰 ₹{r['price']} (Above budget)")
-
+    st.write(f"💰 ₹{r['price']}")
     st.write(f"🛏 {r['beds']} Beds Available")
 
     # ROOM FILTER
@@ -262,41 +200,33 @@ for r in results[:3]:
         submit = st.form_submit_button("🚀 Confirm Booking")
 
         if submit:
+            try:
+                booking_sheet = client.open_by_key(PG_APP_ID).worksheet("Bookings")
 
-            clean_phone = phone.replace("+91", "").replace("+", "").replace(" ", "").strip()
+                booking_sheet.append_row([
+                    r["pg_id"], r["pg"], selected_room, r["location"],
+                    r["price"], name, phone, str(move_date), "CONFIRMED"
+                ])
 
-            if not (clean_phone.isdigit() and len(clean_phone) == 10):
-                st.error("Enter valid phone number ❌")
+                # UPDATE BEDS IN ROOMS SHEET
+                all_rows = sheet_rooms.get_all_records()
+                headers = [h.strip().lower() for h in sheet_rooms.row_values(1)]
+                bed_col_index = headers.index("available_beds") + 1
 
-            else:
-                try:
-                    booking_sheet = client.open_by_key(PG_APP_ID).worksheet("Bookings")
+                for i, row_data in enumerate(all_rows, start=2):
+                    if (
+                        str(row_data["pg_id"]) == str(r["pg_id"]) and
+                        str(row_data["room_no"]) == str(selected_room)
+                    ):
+                        current_beds = int(row_data["available_beds"])
+                        if current_beds > 0:
+                            sheet_rooms.update_cell(i, bed_col_index, current_beds - 1)
 
-                    booking_sheet.append_row([
-                        r["pg_id"], r["pg"], selected_room, r["location"],
-                        r["price"], name.strip(), clean_phone,
-                        str(move_date), "CONFIRMED"
-                    ])
+                st.success("🎉 Booking Confirmed!")
+                st.cache_data.clear()
+                st.rerun()
 
-                    # UPDATE BEDS
-                    all_rows = sheet.get_all_records()
-                    headers = [h.strip().lower() for h in sheet.row_values(1)]
-                    bed_col_index = headers.index("available_beds") + 1
-
-                    for i, row_data in enumerate(all_rows, start=2):
-                        if (
-                            str(row_data["pg_id"]) == str(r["pg_id"]) and
-                            str(row_data["room_no"]) == str(selected_room)
-                        ):
-                            current_beds = int(row_data["available_beds"])
-                            if current_beds > 0:
-                                sheet.update_cell(i, bed_col_index, current_beds - 1)
-
-                    st.success("🎉 Booking Confirmed!")
-                    st.cache_data.clear()
-                    st.rerun()
-
-                except Exception as e:
-                    st.error(f"Error: {e}")
+            except Exception as e:
+                st.error(e)
 
     st.divider()
