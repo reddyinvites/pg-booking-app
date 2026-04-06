@@ -70,7 +70,7 @@ pref_sharing = st.selectbox(
 pref_gender = st.selectbox("👤 Gender", ["Male", "Female", "Co-Living"])
 pref_food = st.selectbox("🍽 Food", ["Veg", "Non Veg", "Both"])
 
-# ✅ NEW (ROOM TYPE)
+# ROOM TYPE (your previous feature kept)
 pref_room_type = st.selectbox("🧊 Room Type", ["AC", "Non AC"])
 
 # ---------------- FILTER ----------------
@@ -89,6 +89,8 @@ for _, row in df.iterrows():
     price = int(price_str)
 
     score = 0
+
+    # ---------------- NEW LOGIC BLOCK ----------------
     reasons = []
     pros = []
     cons = []
@@ -97,34 +99,19 @@ for _, row in df.iterrows():
     if price == pref_budget:
         score += 40
         reasons.append("Perfect budget match 🔥")
-
     elif price < pref_budget:
-        diff = pref_budget - price
-
-        if diff <= 500:
-            score += 35
-            reasons.append("Very close to your budget")
-
-        elif diff <= 1500:
-            score += 25
-            reasons.append("Good value under budget")
-            pros.append("Saves money 💰")
-
-        else:
-            score += 10
-            cons.append("Lower than your budget")
-
+        score += 30
+        reasons.append("Fits within your budget")
     elif price <= pref_budget + 1000:
         score += 20
-        cons.append("Slightly above budget")
-
+        reasons.append("Slightly above your budget")
     else:
         continue
 
     # LOCATION
     if row["area"] == pref_area:
         score += 20
-        reasons.append("Area match")
+        reasons.append("Located in your preferred area")
 
     if row["locality"] == pref_locality:
         score += 20
@@ -133,7 +120,7 @@ for _, row in df.iterrows():
     # SHARING
     if row["sharing_type"] == pref_sharing:
         score += 10
-        reasons.append("Sharing matched")
+        reasons.append("Sharing preference matched")
 
     # GENDER
     if str(row.get("gender","")).lower() == pref_gender.lower():
@@ -142,14 +129,30 @@ for _, row in df.iterrows():
     # FOOD
     if str(row.get("food_type","")).lower() == pref_food.lower():
         score += 5
+        reasons.append("Food preference matched")
 
     # ROOM TYPE
     if str(row.get("room_type","")).lower() == pref_room_type.lower():
         score += 5
+        reasons.append("Room type matched")
 
-    # ---------------- REAL "THINGS TO CONSIDER" ----------------
-    cons = []
+    # ---------------- WHY CHOOSE THIS PG ----------------
+    if price < pref_budget:
+        pros.append("Budget friendly 💰")
 
+    if int(row["available_beds"]) > 2:
+        pros.append("Good availability")
+
+    if str(row.get("food_type","")).lower() == pref_food.lower():
+        pros.append("Food available as per your need")
+
+    if str(row.get("room_type","")).lower() == pref_room_type.lower():
+        pros.append("Preferred room type available")
+
+    if str(row.get("gender","")).lower() == pref_gender.lower():
+        pros.append("Suitable for your preference")
+
+    # ---------------- THINGS TO CONSIDER ----------------
     if price > pref_budget:
         cons.append(f"₹{price - pref_budget} above your budget")
 
@@ -160,13 +163,10 @@ for _, row in df.iterrows():
         cons.append("Different sharing than your preference")
 
     if str(row.get("room_type","")).lower() != pref_room_type.lower():
-        cons.append("Room type not matching your preference")
+        cons.append("Room type not matching")
 
     if str(row.get("food_type","")).lower() != pref_food.lower():
         cons.append("Food type mismatch")
-
-    if str(row.get("gender","")).lower() != pref_gender.lower():
-        cons.append("Different gender preference")
 
     if int(row["available_beds"]) == 1:
         cons.append("Only 1 bed left")
@@ -238,11 +238,17 @@ for i, r in enumerate(top_results):
     st.write(f"📞 {r['phone']}")
     st.link_button("📲 WhatsApp Now", f"https://wa.me/{r['phone']}")
 
+    # ---------------- UI SECTIONS ----------------
+
     st.markdown("### 💡 Why this PG?")
     for reason in r["reasons"]:
         st.write("•", reason)
 
-    # ✅ CLEAN NOTE (NO FAKE DATA)
+    if r["pros"]:
+        st.markdown("### ✅ Why choose this PG?")
+        for p in r["pros"]:
+            st.write("✔", p)
+
     if r["cons"]:
         st.markdown("### ⚠️ Things to consider")
         for c in r["cons"]:
