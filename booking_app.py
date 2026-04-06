@@ -230,6 +230,15 @@ for r in results[:3]:
     st.write(f"🛏 {r['beds']} Beds Available")
 
     # ---------------- ROOM SELECTION ----------------
+
+# ✅ CREATE room_df FIRST
+room_df = df[
+    (df["pg_name"] == r["pg"]) &
+    (df["location"] == r["location"]) &
+    (df["available_beds"] > 0)
+]
+
+# ✅ NOW USE IT
 if not room_df.empty:
 
     room_list = room_df["room_no"].astype(str).unique().tolist()
@@ -265,10 +274,13 @@ if not room_df.empty:
                 try:
                     from datetime import datetime
 
+                    # ✅ OPEN BOOKINGS SHEET
                     booking_sheet = client.open_by_key(PG_APP_ID).worksheet("Bookings")
 
+                    # ✅ GET pg_id
                     pg_id = str(selected_room_data["pg_id"].values[0])
 
+                    # ✅ SAVE DATA (MATCH YOUR SHEET)
                     booking_sheet.append_row([
                         pg_id,
                         name,
@@ -280,7 +292,7 @@ if not room_df.empty:
                         "CONFIRMED"
                     ])
 
-                    # Reduce beds
+                    # ---------------- REDUCE BED ----------------
                     all_rows = sheet.get_all_records()
                     headers = sheet.row_values(1)
                     bed_col_index = headers.index("available_beds") + 1
