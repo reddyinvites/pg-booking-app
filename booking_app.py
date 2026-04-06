@@ -48,7 +48,7 @@ if df.empty:
     st.stop()
 
 # ---------------- CLEAN ----------------
-df = df[df["available_beds"] > 0]
+df["sharing_type"] = df["sharing_type"].astype(str).str.replace("Sharing", "").str.strip()
 df[["area", "locality"]] = df["location"].str.split("-", expand=True)
 
 # ---------------- SEARCH ----------------
