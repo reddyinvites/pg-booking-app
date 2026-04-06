@@ -69,8 +69,6 @@ pref_sharing = st.selectbox(
 
 pref_gender = st.selectbox("👤 Gender", ["Male", "Female", "Co-Living"])
 pref_food = st.selectbox("🍽 Food", ["Veg", "Non Veg", "Both"])
-
-# ROOM TYPE (your previous feature kept)
 pref_room_type = st.selectbox("🧊 Room Type", ["AC", "Non AC"])
 
 # ---------------- FILTER ----------------
@@ -89,13 +87,47 @@ for _, row in df.iterrows():
     price = int(price_str)
 
     score = 0
-
-    # ---------------- NEW LOGIC BLOCK ----------------
     reasons = []
     pros = []
     cons = []
 
-    # 💰 BUDGET
+    # ---------------- PAIN SCORE ----------------
+    def norm(x):
+        try:
+            return round(float(x) / 2, 1)
+        except:
+            return 3
+
+    food_s = norm(row.get("food_rating", 6))
+    clean_s = norm(row.get("cleanliness_score", 6))
+    safety_s = norm(row.get("safety", 6))
+
+    noise_map = {"low":5, "medium":3, "high":1}
+    noise_s = noise_map.get(str(row.get("noise_level","medium")).lower(), 3)
+
+    pain_score = round((food_s + clean_s + safety_s + noise_s) / 4, 1)
+
+    pain_dict = {
+        "Food": food_s,
+        "Cleanliness": clean_s,
+        "Noise": noise_s,
+        "Safety": safety_s
+    }
+
+    worst = min(pain_dict, key=pain_dict.get)
+
+    pain_msg = {
+        "Food": "⚠️ Food quality is low",
+        "Cleanliness": "⚠️ Not very clean",
+        "Noise": "⚠️ Too noisy",
+        "Safety": "⚠️ Safety concerns"
+    }
+
+    biggest_pain = pain_msg.get(worst, "")
+    if pain_score >= 4:
+        biggest_pain = "✅ Clean & peaceful stay"
+
+    # ---------------- WHY THIS PG ----------------
     if price == pref_budget:
         score += 40
         reasons.append("Perfect budget match 🔥")
@@ -108,7 +140,6 @@ for _, row in df.iterrows():
     else:
         continue
 
-    # LOCATION
     if row["area"] == pref_area:
         score += 20
         reasons.append("Located in your preferred area")
@@ -117,40 +148,36 @@ for _, row in df.iterrows():
         score += 20
         reasons.append("Exact locality match")
 
-    # SHARING
     if row["sharing_type"] == pref_sharing:
         score += 10
         reasons.append("Sharing preference matched")
 
-    # GENDER
-    if str(row.get("gender","")).lower() == pref_gender.lower():
-        score += 5
-
-    # FOOD
     if str(row.get("food_type","")).lower() == pref_food.lower():
         score += 5
         reasons.append("Food preference matched")
 
-    # ROOM TYPE
     if str(row.get("room_type","")).lower() == pref_room_type.lower():
         score += 5
         reasons.append("Room type matched")
 
-    # ---------------- WHY CHOOSE THIS PG ----------------
+    # ---------------- WHY CHOOSE THIS PG (SMART) ----------------
     if price < pref_budget:
         pros.append("Budget friendly 💰")
 
+    if food_s >= 4:
+        pros.append("Good food quality 🍛")
+
+    if clean_s >= 4:
+        pros.append("Very clean & hygienic 🧼")
+
+    if safety_s >= 4:
+        pros.append("Safe environment 🔐")
+
+    if noise_s >= 4:
+        pros.append("Peaceful stay 🔇")
+
     if int(row["available_beds"]) > 2:
         pros.append("Good availability")
-
-    if str(row.get("food_type","")).lower() == pref_food.lower():
-        pros.append("Food available as per your need")
-
-    if str(row.get("room_type","")).lower() == pref_room_type.lower():
-        pros.append("Preferred room type available")
-
-    if str(row.get("gender","")).lower() == pref_gender.lower():
-        pros.append("Suitable for your preference")
 
     # ---------------- THINGS TO CONSIDER ----------------
     if price > pref_budget:
@@ -182,7 +209,13 @@ for _, row in df.iterrows():
         "score": score,
         "reasons": reasons,
         "pros": pros,
-        "cons": cons
+        "cons": cons,
+        "pain_score": pain_score,
+        "food_s": food_s,
+        "clean_s": clean_s,
+        "safety_s": safety_s,
+        "noise_s": noise_s,
+        "biggest_pain": biggest_pain
     })
 
 # ---------------- SORT ----------------
@@ -224,31 +257,29 @@ for i, r in enumerate(top_results):
     else:
         st.warning(f"💰 ₹{r['price']} (Above budget)")
 
-    # BEDS
-    st.write(f"🛏 {r['beds']} Beds Available")
+    # PAIN SCORE UI
+    st.markdown("### 😣 PG Condition Score")
+    st.write(f"⭐ {r['pain_score']} / 5")
+    st.write(f"🍛 Food → {r['food_s']}")
+    st.write(f"🧼 Cleanliness → {r['clean_s']}")
+    st.write(f"🔐 Safety → {r['safety_s']}")
+    st.write(f"🔇 Noise → {r['noise_s']}")
 
-    if r["beds"] == 1:
-        st.error("🔥 Last bed available!")
-    elif r["beds"] <= 2:
-        st.warning("⚡ Only few beds left")
+    st.markdown("### 🚨 Biggest Issue")
+    st.write(r["biggest_pain"])
 
-    views = random.randint(20, 80)
-    st.caption(f"👀 {views} people viewed today")
-
-    st.write(f"📞 {r['phone']}")
-    st.link_button("📲 WhatsApp Now", f"https://wa.me/{r['phone']}")
-
-    # ---------------- UI SECTIONS ----------------
-
+    # WHY THIS PG
     st.markdown("### 💡 Why this PG?")
     for reason in r["reasons"]:
         st.write("•", reason)
 
+    # WHY CHOOSE
     if r["pros"]:
         st.markdown("### ✅ Why choose this PG?")
         for p in r["pros"]:
             st.write("✔", p)
 
+    # CONSIDER
     if r["cons"]:
         st.markdown("### ⚠️ Things to consider")
         for c in r["cons"]:
