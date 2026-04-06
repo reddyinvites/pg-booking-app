@@ -245,11 +245,30 @@ for r in results[:3]:
     st.write(f"🛏 {r['beds']} Beds Available")
 
     # 🚀 BOOK BUTTON (YOUR BUSINESS)
-    msg = f"Hi, I want to book {r['pg']} for ₹{r['price']}"
-    st.link_button(
-        "🚀 Book Now",
-        f"https://wa.me/{BUSINESS_NUMBER}?text={msg.replace(' ', '%20')}"
-    )
+    msg = f"""Hi 👋
+
+I'm interested in booking:
+
+🏠 PG: {r['pg']}
+💰 Price: ₹{r['price']}
+📍 Location: {r['location']}
+🛏 Sharing: {pref_sharing}
+
+Looking for immediate move-in.
+
+Please share:
+• Availability
+• Photos & Videos
+• House Rules
+
+Thanks 🙂
+"""
+    import urllib.parse
+
+st.link_button(
+    "🚀 Book Now",
+    f"https://wa.me/{BUSINESS_NUMBER}?text={urllib.parse.quote(msg)}"
+)
 
     # CONDITION SCORE
     st.markdown("### 😣 PG Condition Score")
