@@ -88,7 +88,6 @@ for _, row in df.iterrows():
 
     score = 0
     reasons = []
-    pros = []
     cons = []
 
     # 💰 BUDGET
@@ -106,7 +105,6 @@ for _, row in df.iterrows():
         elif diff <= 1500:
             score += 25
             reasons.append("Good value under budget")
-            pros.append("Saves money 💰")
 
         else:
             score += 10
@@ -145,31 +143,13 @@ for _, row in df.iterrows():
     if str(row.get("room_type","")).lower() == pref_room_type.lower():
         score += 5
 
-    # CONS
-    if price > pref_budget:
-        cons.append(f"₹{price - pref_budget} above your budget")
-
-    elif price < pref_budget - 1500:
-        cons.append("Lower than your budget")
-
-    if row["sharing_type"] != pref_sharing:
-        cons.append("Different sharing than your preference")
-
-    if str(row.get("room_type","")).lower() != pref_room_type.lower():
-        cons.append("Room type mismatch")
-
-    if str(row.get("food_type","")).lower() != pref_food.lower():
-        cons.append("Food type mismatch")
-
-    if str(row.get("gender","")).lower() != pref_gender.lower():
-        cons.append("Gender mismatch")
-
     if int(row["available_beds"]) == 1:
         cons.append("Only 1 bed left")
 
     score = max(0, min(100, int(score)))
 
     results.append({
+        "row": row,
         "pg": row["pg_name"],
         "location": row["location"],
         "price": price,
@@ -177,7 +157,6 @@ for _, row in df.iterrows():
         "phone": row["owner_number"],
         "score": score,
         "reasons": reasons,
-        "pros": pros,
         "cons": cons
     })
 
@@ -189,89 +168,82 @@ st.subheader("🏆 Best PGs For You")
 
 top_results = results[:3]
 
-if not top_results:
-    st.error("No matching PGs found ❌")
-
-for i, r in enumerate(top_results):
-
-    if i == 0:
-        color = "#D4EDDA"
-        badge = "🥇 Best Match"
-    elif i == 1:
-        color = "#FFF3CD"
-        badge = "🥈 Great Option"
-    else:
-        color = "#E2E3E5"
-        badge = "🥉 Value Pick"
+for r in top_results:
 
     st.markdown(f"""
-    <div style="background:{color};padding:15px;border-radius:15px;margin-bottom:10px">
-        <h3>🏠 {r['pg']} — {r['score']}% Match</h3>
-        <b>{badge}</b><br>
-        📍 {r['location']}
+    <div style="background:#D4EDDA;padding:15px;border-radius:15px">
+    <h3>🏠 {r['pg']} — {r['score']}% Match</h3>
+    📍 {r['location']}
     </div>
     """, unsafe_allow_html=True)
 
-    # 💰 PRICE UI
-    if r["price"] == pref_budget:
-        st.markdown(f"""
-        <div style="background:#D4EDDA;padding:10px;border-radius:10px">
-        💰 ₹{r['price']} (Perfect match 🔥)
-        </div>
-        """, unsafe_allow_html=True)
-
-    elif r["price"] < pref_budget:
-        st.markdown(f"""
-        <div style="background:#D1ECF1;padding:10px;border-radius:10px">
-        💰 ₹{r['price']} (Save ₹{pref_budget - r['price']})
-        </div>
-        """, unsafe_allow_html=True)
-
+    # PRICE
+    if r["price"] < pref_budget:
+        st.info(f"💰 ₹{r['price']} (Save ₹{pref_budget - r['price']})")
+    elif r["price"] == pref_budget:
+        st.success(f"💰 ₹{r['price']} Perfect match")
     else:
-        st.markdown(f"""
-        <div style="background:#F8D7DA;padding:10px;border-radius:10px">
-        💰 ₹{r['price']} (Above budget)
-        </div>
-        """, unsafe_allow_html=True)
+        st.warning(f"💰 ₹{r['price']} Above budget")
 
-    # 🛏 BEDS
+    # BEDS
     st.write(f"🛏 {r['beds']} Beds Available")
 
-    # 🔥 URGENCY UI
     if r["beds"] == 1:
-        st.markdown("""
-        <div style="background:#F8D7DA;padding:10px;border-radius:10px">
-        🔥 <b>Last bed available!</b>
-        </div>
-        """, unsafe_allow_html=True)
-
+        st.error("🔥 Last bed available!")
     elif r["beds"] <= 2:
-        st.markdown("""
-        <div style="background:#FFF3CD;padding:10px;border-radius:10px">
-        ⚡ <b>Only few beds left</b>
-        </div>
-        """, unsafe_allow_html=True)
+        st.warning("⚡ Only few beds left")
 
-    # 👀 SOCIAL PROOF
     views = random.randint(30, 90)
+    st.caption(f"👀 {views} people viewed today")
 
-    st.markdown(f"""
-    <div style="color:gray;font-size:13px">
-    👀 {views} people viewed today <br>
-    ⏳ Prices may increase soon
-    </div>
-    """, unsafe_allow_html=True)
-
-    # 📞 CONTACT
     st.write(f"📞 {r['phone']}")
     st.link_button("📲 WhatsApp Now", f"https://wa.me/{r['phone']}")
 
-    # 💡 WHY THIS PG
+    row = r["row"]
+
+    # ---------------- CONDITION SCORE ----------------
+    food = float(row.get("food_rating") or 5)
+    clean = float(row.get("cleanliness") or 5)
+    safety = float(row.get("safety") or 5)
+    maint = float(row.get("maintenance_score") or 5)
+
+    noise_map = {"low":5, "medium":3, "high":1}
+    noise_raw = str(row.get("noise_level","medium")).lower()
+    noise = noise_map.get(noise_raw, 3)
+
+    pain_score = round((food + clean + safety + maint + noise)/5, 1)
+
+    st.markdown("### 😣 PG Condition Score")
+    st.write(f"⭐ {pain_score} / 5")
+
+    st.write(f"🍛 Food → {food}")
+    st.write(f"🧼 Cleanliness → {clean}")
+    st.write(f"🔐 Safety → {safety}")
+    st.write(f"🔧 Maintenance → {maint}")
+    st.write(f"🔇 Noise → {noise_raw.capitalize()}")
+
+    # BIGGEST ISSUE
+    issues = {
+        "Food not good": food,
+        "Not clean": clean,
+        "Maintenance issues": maint,
+        "Safety concern": safety,
+        "Too noisy": noise
+    }
+
+    worst = min(issues, key=issues.get)
+
+    if pain_score >= 4:
+        st.success("✅ Very good PG condition")
+    else:
+        st.warning(f"⚠️ {worst}")
+
+    # WHY
     st.markdown("### 💡 Why this PG?")
     for reason in r["reasons"]:
         st.write("•", reason)
 
-    # ⚠️ THINGS TO CONSIDER
+    # CONSIDER
     if r["cons"]:
         st.markdown("### ⚠️ Things to consider")
         for c in r["cons"]:
