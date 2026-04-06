@@ -238,17 +238,18 @@ for r in results[:3]:
 
     if not room_df.empty:
 
-        room_list = room_df["room_no"].astype(str).unique().tolist()
+    room_list = room_df["room_no"].astype(str).unique().tolist()
 
-        selected_room = st.selectbox(
-            f"🛏 Select Room - {r['pg']}",
-            room_list,
-            key=f"room_{r['pg_id']}"
-        )
+    selected_room = st.selectbox(
+        f"🛏 Select Room - {r['pg']}",
+        room_list,
+        key=f"room_{r['pg_id']}"
+    )
 
-        selected_room_data = room_df[
-            room_df["room_no"].astype(str) == selected_room
-        ]
+    # rest of your code...
+
+else:
+    st.warning("No rooms available for selected sharing ❌")
 
         beds_left = int(selected_room_data["available_beds"].values[0])
         st.info(f"🛏 Available Beds in Room {selected_room}: {beds_left}")
