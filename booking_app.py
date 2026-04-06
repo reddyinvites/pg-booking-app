@@ -38,21 +38,15 @@ if df.empty:
 # ---------------- CLEAN DATA ----------------
 df["location"] = df["location"].astype(str).str.strip()
 
-# ✅ SAFE SPLIT (FIXED BUG)
 df["area"] = df["location"].apply(lambda x: x.split("-")[0].strip() if "-" in x else "")
 df["locality"] = df["location"].apply(lambda x: x.split("-")[1].strip() if "-" in x else "")
 
-# REMOVE INVALID
 df = df[(df["area"] != "") & (df["locality"] != "")]
-
-# REMOVE DUPLICATES SAFELY
 df = df.drop_duplicates()
 
-# CONVERT NUMBERS
 df["price"] = pd.to_numeric(df["price"], errors="coerce")
 df["available_beds"] = pd.to_numeric(df["available_beds"], errors="coerce")
 
-# ONLY AVAILABLE ROOMS
 df = df[df["available_beds"] > 0]
 
 # ---------------- UI ----------------
@@ -60,7 +54,6 @@ st.subheader("🎯 Your Preferences")
 
 search = st.text_input("🔍 Search Area / Locality")
 
-# SEARCH FILTER
 if search:
     s = search.lower()
     df = df[
@@ -72,13 +65,11 @@ if search:
 areas = sorted(df["area"].dropna().unique())
 pref_area = st.selectbox("📍 Area", areas)
 
-# LOCALITY BASED ON AREA (FIXED)
 localities = df[df["area"] == pref_area]["locality"]
 localities = sorted(localities.dropna().unique())
 
 pref_locality = st.selectbox("🏠 Locality", localities)
 
-# OTHER FILTERS
 pref_budget = st.number_input("💰 Budget", value=8000, step=500)
 
 pref_sharing = st.selectbox(
@@ -88,6 +79,9 @@ pref_sharing = st.selectbox(
 
 pref_gender = st.selectbox("👤 Gender", ["Male", "Female", "Co-Living"])
 pref_food = st.selectbox("🍽 Food", ["Veg", "Non Veg", "Both"])
+
+# ✅ NEW ROOM TYPE FILTER
+pref_room_type = st.selectbox("🧊 Room Type", ["AC", "Non AC"])
 
 # ---------------- FILTER ----------------
 df = df[
@@ -105,7 +99,7 @@ for _, row in df.iterrows():
     reasons = []
     note = []
 
-    # 💰 PRICE LOGIC
+    # 💰 PRICE
     if price == pref_budget:
         score += 40
         reasons.append("Perfect budget match 🔥")
@@ -133,21 +127,29 @@ for _, row in df.iterrows():
     else:
         continue
 
-    # MATCHES
+    # LOCATION
     score += 20
     reasons.append("Exact locality match 📍")
 
+    # SHARING
     if row["sharing_type"] == pref_sharing:
         score += 10
         reasons.append("Sharing matched 🛏")
 
+    # GENDER
     if str(row.get("gender", "")).lower() == pref_gender.lower():
         score += 5
         reasons.append("Gender matched 👤")
 
+    # FOOD
     if str(row.get("food_type", "")).lower() == pref_food.lower():
         score += 5
         reasons.append("Food matched 🍽")
+
+    # ✅ ROOM TYPE MATCH
+    if str(row.get("room_type", "")).lower() == pref_room_type.lower():
+        score += 10
+        reasons.append("Room type matched 🧊")
 
     score = min(100, int(score))
 
@@ -184,7 +186,6 @@ for i, r in enumerate(results):
     </div>
     """, unsafe_allow_html=True)
 
-    # PRICE
     if r["price"] == pref_budget:
         st.success(f"💰 ₹{r['price']} (Perfect match 🔥)")
     elif r["price"] < pref_budget:
@@ -193,7 +194,6 @@ for i, r in enumerate(results):
     else:
         st.warning(f"💰 ₹{r['price']} (Above budget)")
 
-    # BEDS
     st.write(f"🛏 {r['beds']} Beds Available")
 
     if r["beds"] == 1:
@@ -201,19 +201,15 @@ for i, r in enumerate(results):
     elif r["beds"] <= 2:
         st.warning("⚡ Only few beds left")
 
-    # SOCIAL
     st.caption(f"👀 {random.randint(30,80)} people viewed today")
 
-    # CONTACT
     st.write(f"📞 {r['phone']}")
     st.link_button("📲 WhatsApp Now", f"https://wa.me/{r['phone']}")
 
-    # WHY
     st.markdown("### 💡 Why this PG?")
     for reason in r["reasons"]:
         st.write("•", reason)
 
-    # NOTE
     if r["note"]:
         st.markdown("### 💡 Note")
         for n in r["note"]:
