@@ -24,7 +24,7 @@ client = gspread.authorize(creds)
 try:
     sh = client.open_by_key("1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q")
     sheet = sh.sheet1
-except Exception:
+except:
     st.error("❌ Unable to connect to Google Sheet")
     st.stop()
 
@@ -48,6 +48,7 @@ if df.empty:
 # ---------------- CLEAN ----------------
 df = df[df["available_beds"] > 0]
 df = df.drop_duplicates(subset=["pg_name", "location"])
+
 df[["area", "locality"]] = df["location"].str.split("-", expand=True)
 
 # ---------------- SEARCH ----------------
@@ -89,7 +90,7 @@ def safe_float(val, default=5):
     try:
         if val == "" or val is None:
             return default
-        return float(val)
+        return float(val) / 2   # 🔥 FIX → convert 10 scale to 5 scale
     except:
         return default
 
@@ -161,41 +162,53 @@ for _, row in df.iterrows():
     if str(row.get("room_type","")).lower() == pref_room_type.lower():
         score += 5
 
-    if int(row["available_beds"]) == 1:
-        cons.append("Only 1 bed left")
-
-    score = max(0, min(100, int(score)))
-
-    # ---------------- PAIN SCORE FIXED ----------------
+    # ---------------- PAIN SCORE ----------------
     food_s = safe_float(row.get("food_rating"))
     clean_s = safe_float(row.get("cleanliness"))
     safety_s = safe_float(row.get("safety"))
     maint_s = safe_float(row.get("maintenance_score"))
 
-    noise_map = {"low":5, "medium":3, "high":1}
+    # 🔥 NOISE CONVERSION
+    noise_map = {
+        "low": 5,
+        "medium": 3.5,
+        "high": 1.5
+    }
+
     noise_raw = str(row.get("noise_level","medium")).lower()
-    noise_s = noise_map.get(noise_raw, 3)
+    noise_s = noise_map.get(noise_raw, 3.5)
 
-    # ✅ convert /10 → /5
-    food_5 = food_s / 2
-    clean_5 = clean_s / 2
-    safety_5 = safety_s / 2
-    maint_5 = maint_s / 2
+    pain_score = round((food_s + clean_s + safety_s + maint_s + noise_s) / 5, 1)
 
-    pain_score = round((food_5 + clean_5 + safety_5 + maint_5 + noise_s) / 5, 1)
-
-    # biggest issue
+    # BIGGEST ISSUE
     issues = {
-        "Food not good": food_5,
-        "Not very clean": clean_5,
-        "Maintenance issue": maint_5,
-        "Safety concern": safety_5,
+        "Food not good": food_s,
+        "Not very clean": clean_s,
+        "Maintenance issue": maint_s,
+        "Safety concern": safety_s,
         "Too noisy": noise_s
     }
 
     biggest_issue = min(issues, key=issues.get)
 
-    # ---------------- STORE ----------------
+    # ---------------- CONSIDER ----------------
+    if price > pref_budget:
+        cons.append(f"₹{price - pref_budget} above your budget")
+
+    if row["sharing_type"] != pref_sharing:
+        cons.append("Different sharing than your preference")
+
+    if str(row.get("room_type","")).lower() != pref_room_type.lower():
+        cons.append("Room type not matching")
+
+    if str(row.get("food_type","")).lower() != pref_food.lower():
+        cons.append("Food type mismatch")
+
+    if int(row["available_beds"]) == 1:
+        cons.append("Only 1 bed left")
+
+    score = max(0, min(100, int(score)))
+
     results.append({
         "pg": row["pg_name"],
         "location": row["location"],
@@ -206,12 +219,12 @@ for _, row in df.iterrows():
         "reasons": reasons,
         "cons": cons,
         "pain": pain_score,
-        "food": round(food_5,1),
-        "clean": round(clean_5,1),
-        "safety": round(safety_5,1),
-        "maint": round(maint_5,1),
-        "noise": noise_raw.capitalize(),
-        "issue": biggest_issue
+        "food_s": food_s,
+        "clean_s": clean_s,
+        "safety_s": safety_s,
+        "maint_s": maint_s,
+        "noise_label": noise_raw.capitalize(),
+        "big_issue": biggest_issue
     })
 
 # ---------------- SORT ----------------
@@ -224,39 +237,48 @@ for r in results[:3]:
 
     st.markdown(f"## 🏠 {r['pg']} — {r['score']}% Match")
 
-    if r["price"] < pref_budget:
+    if r["price"] == pref_budget:
+        st.success(f"💰 ₹{r['price']} (Perfect match 🔥)")
+    elif r["price"] < pref_budget:
         st.info(f"💰 ₹{r['price']} (Save ₹{pref_budget - r['price']})")
-    elif r["price"] == pref_budget:
-        st.success(f"💰 ₹{r['price']} Perfect match")
     else:
-        st.warning(f"💰 ₹{r['price']} Above budget")
+        st.warning(f"💰 ₹{r['price']} (Above budget)")
 
     st.write(f"🛏 {r['beds']} Beds Available")
 
-    # ⭐ CONDITION SCORE
+    # 🔥 PG CONDITION SCORE
     st.markdown("### 😣 PG Condition Score")
     st.write(f"⭐ {r['pain']} / 5")
 
-    st.write(f"🍛 Food → {r['food']} / 5")
-    st.write(f"🧼 Cleanliness → {r['clean']} / 5")
-    st.write(f"🔐 Safety → {r['safety']} / 5")
-    st.write(f"🛠 Maintenance → {r['maint']} / 5")
+    st.write(f"🍛 Food → {r['food_s']}")
+    st.write(f"🧼 Cleanliness → {r['clean_s']}")
+    st.write(f"🔐 Safety → {r['safety_s']}")
+    st.write(f"🛠 Maintenance → {r['maint_s']}")
 
-    if r["noise"] == "Low":
+    if r["noise_label"] == "Low":
         st.success("🔇 Noise → Low (Peaceful)")
-    elif r["noise"] == "Medium":
+    elif r["noise_label"] == "Medium":
         st.warning("🔇 Noise → Medium")
     else:
-        st.error("🔇 Noise → High (Noisy)")
+        st.error("🔇 Noise → High (Noisy area)")
 
     # 🚨 ISSUE
     st.markdown("### 🚨 Biggest Issue")
-    st.error(r["issue"])
+    st.error(r["big_issue"])
 
     # WHY
     st.markdown("### 💡 Why this PG?")
     for reason in r["reasons"]:
         st.write("•", reason)
+
+    # CHOOSE
+    st.markdown("### ✅ Why choose this PG?")
+    if r["food_s"] >= 4:
+        st.write("✔ Good food quality 🍛")
+    if r["clean_s"] >= 4:
+        st.write("✔ Clean rooms 🧼")
+    if r["safety_s"] >= 4:
+        st.write("✔ Safe environment 🔐")
 
     # CONSIDER
     if r["cons"]:
