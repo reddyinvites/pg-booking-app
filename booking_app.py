@@ -269,7 +269,7 @@ for r in results[:3]:
 
                 else:
                     try:
-                        booking_sheet = sh.worksheet("Bookings")
+                        booking_sheet = client.open_by_key(PG_APP_ID).worksheet("Bookings")
 
                         booking_sheet.append_row([
                             r["pg"],
