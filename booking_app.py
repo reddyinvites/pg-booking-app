@@ -75,6 +75,15 @@ pref_room_type = st.selectbox("🧊 Room Type", ["AC", "Non AC"])
 df = df[df["area"] == pref_area]
 df = df[df["locality"] == pref_locality]
 
+# ---------------- SAFE FLOAT ----------------
+def safe_float(val, default=3):
+    try:
+        if val == "" or val is None:
+            return default
+        return float(val)
+    except:
+        return default
+
 # ---------------- SCORING ----------------
 results = []
 
@@ -146,10 +155,10 @@ for _, row in df.iterrows():
         score += 5
 
     # ---------------- PAIN SCORE ----------------
-    food_s = float(row.get("food_rating", 3))
-    clean_s = float(row.get("cleanliness", 3))
-    safety_s = float(row.get("safety", 3))
-    maint_s = float(row.get("maintenance_score", 3))
+    food_s = safe_float(row.get("food_rating"))
+    clean_s = safe_float(row.get("cleanliness"))
+    safety_s = safe_float(row.get("safety"))
+    maint_s = safe_float(row.get("maintenance_score"))
 
     noise_map = {"low":5, "medium":3, "high":1}
     noise_raw = str(row.get("noise_level","medium")).lower()
@@ -230,7 +239,7 @@ for i, r in enumerate(results[:3]):
 
     st.write(f"🛏 {r['beds']} Beds Available")
 
-    # ---------------- PAIN SCORE DISPLAY ----------------
+    # ---------------- PAIN SCORE ----------------
     st.markdown("### 😣 PG Condition Score")
     st.write(f"⭐ {r['pain']} / 5")
 
@@ -239,7 +248,7 @@ for i, r in enumerate(results[:3]):
     st.write(f"🔐 Safety → {r['safety_s']}")
     st.write(f"🛠 Maintenance → {r['maint_s']}")
 
-    # ✅ FIXED NOISE DISPLAY
+    # NOISE DISPLAY
     if r["noise_label"] == "Low":
         st.success("🔇 Noise → Low (Peaceful)")
     elif r["noise_label"] == "Medium":
@@ -255,7 +264,7 @@ for i, r in enumerate(results[:3]):
     for reason in r["reasons"]:
         st.write("•", reason)
 
-    # CHOOSE
+    # WHY CHOOSE
     st.markdown("### ✅ Why choose this PG?")
     if r["food_s"] >= 4:
         st.write("✔ Good food quality 🍛")
