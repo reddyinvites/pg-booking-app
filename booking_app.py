@@ -269,7 +269,6 @@ st.link_button(
     "🚀 Book Now",
     f"https://wa.me/{BUSINESS_NUMBER}?text={urllib.parse.quote(msg)}"
 )
-
     # CONDITION SCORE
     st.markdown("### 😣 PG Condition Score")
     st.write(f"⭐ {r['pain']} / 5")
