@@ -29,7 +29,7 @@ except Exception as e:
 # ---------------- CONNECT ----------------
 try:
     sh = client.open_by_key(MAIN_SHEET_ID)
-    sheet_pg = sh.sheet1  # ONLY PG DATA
+    sheet_pg = sh.sheet1
 except Exception as e:
     st.error(f"❌ Sheet Error: {e}")
     st.stop()
@@ -131,7 +131,7 @@ results = sorted(results, key=lambda x: x["score"], reverse=True)
 # ---------------- DISPLAY ----------------
 st.subheader("🏆 Best PGs For You")
 
-for r in results[:3]:
+for i, r in enumerate(results[:3]):  # ✅ FIXED HERE
 
     st.markdown(f"## 🏠 {r['pg']} — {r['score']}% Match")
     st.write(f"📍 {r['location']}")
@@ -139,7 +139,7 @@ for r in results[:3]:
     st.write(f"🛏 Beds Available: {r['beds']}")
 
     # ---------------- BOOKING ----------------
-    with st.form(f"book_form_{r['pg_id']}"):
+    with st.form(f"book_form_{i}"):  # ✅ UNIQUE KEY
 
         name = st.text_input("👤 Your Name")
         phone = st.text_input("📞 Phone Number")
