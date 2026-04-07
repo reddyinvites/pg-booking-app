@@ -198,7 +198,7 @@ for (pg_id, pg_name, location), group in grouped:
         "pg": pg_name,
         "location": location,
         "price": price,
-        "beds": int(row["available_beds"]),
+        "beds": int(group["available_beds"].sum()),
         "score": score,
         "reasons": reasons,
         "cons": cons,
