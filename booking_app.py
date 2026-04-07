@@ -15,21 +15,30 @@ scope = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-creds = Credentials.from_service_account_info(
-    st.secrets["gcp"],
-    scopes=scope
-)
+# ✅ AUTH FIX (SAFE)
+try:
+    creds_dict = dict(st.secrets["gcp"])
+    creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
 
-client = gspread.authorize(creds)
+    creds = Credentials.from_service_account_info(
+        creds_dict,
+        scopes=scope
+    )
+
+    client = gspread.authorize(creds)
+
+except Exception as e:
+    st.error(f"❌ Auth Error: {e}")
+    st.stop()
 
 # ---------------- SAFE CONNECTION ----------------
 try:
     sh = client.open_by_key("1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q")
 
-    sheet = sh.worksheet("rooms")   # ✅ FIXED (rooms sheet)
+    sheet = sh.sheet1   # ✅ ONLY CHANGE (removed rooms)
 
-except:
-    st.error("❌ Unable to connect to Google Sheet")
+except Exception as e:
+    st.error(f"❌ Sheet Error: {e}")
     st.stop()
 
 # ---------------- LOAD DATA ----------------
@@ -49,7 +58,8 @@ def load_data():
         )
 
         return df
-    except:
+    except Exception as e:
+        st.error(e)
         return pd.DataFrame()
 
 df = load_data()
@@ -181,8 +191,6 @@ for (pg_id, pg_name, location), group in grouped:
 
     pain_score = round((food_s + clean_s + safety_s + maint_s + noise_s) / 5, 1)
 
-    biggest_issue = "General issue"
-
     if int(row["available_beds"]) == 1:
         cons.append("Only 1 bed left")
 
@@ -193,17 +201,11 @@ for (pg_id, pg_name, location), group in grouped:
         "pg": pg_name,
         "location": location,
         "price": price,
-        "beds": int(group["available_beds"].sum()),  # ✅ FIXED
+        "beds": int(group["available_beds"].sum()),
         "score": score,
         "reasons": reasons,
         "cons": cons,
-        "pain": pain_score,
-        "food_s": food_s,
-        "clean_s": clean_s,
-        "safety_s": safety_s,
-        "maint_s": maint_s,
-        "noise_label": noise_raw.capitalize(),
-        "big_issue": biggest_issue
+        "pain": pain_score
     })
 
 # ---------------- SORT ----------------
@@ -212,7 +214,7 @@ results = sorted(results, key=lambda x: x["score"], reverse=True)
 # ---------------- DISPLAY ----------------
 st.subheader("🏆 Best PGs For You")
 
-for r in results[:3]:
+for i, r in enumerate(results[:3]):  # ✅ UNIQUE INDEX FIX
 
     st.markdown(f"## 🏠 {r['pg']} — {r['score']}% Match")
 
@@ -225,35 +227,8 @@ for r in results[:3]:
 
     st.write(f"🛏 {r['beds']} Beds Available")
 
-    # ROOM FILTER
-    room_df = df[
-        (df["pg_id"] == r["pg_id"]) &
-        (df["location"] == r["location"]) &
-        (df["available_beds"] > 0) &
-        (df["sharing_type"] == pref_sharing.split()[0])
-    ]
-
-    if room_df.empty:
-        st.warning("No rooms available for selected sharing ❌")
-        continue
-
-    room_list = room_df["room_no"].astype(str).unique().tolist()
-
-    selected_room = st.selectbox(
-        f"🛏 Select Room - {r['pg']}",
-        room_list,
-        key=f"room_{r['pg_id']}"
-    )
-
-    selected_room_data = room_df[
-        room_df["room_no"].astype(str) == selected_room
-    ]
-
-    beds_left = int(selected_room_data["available_beds"].values[0])
-    st.info(f"🛏 Available Beds in Room {selected_room}: {beds_left}")
-
     # BOOKING
-    with st.form(f"book_form_{r['pg_id']}"):
+    with st.form(f"book_form_{i}"):
 
         name = st.text_input("👤 Your Name")
         phone = st.text_input("📞 Phone Number")
@@ -273,24 +248,11 @@ for r in results[:3]:
                     booking_sheet = client.open_by_key(PG_APP_ID).worksheet("Bookings")
 
                     booking_sheet.append_row([
-                        r["pg_id"], r["pg"], selected_room, r["location"],
-                        r["price"], name.strip(), clean_phone,
+                        r["pg_id"], r["pg"],
+                        r["location"], r["price"],
+                        name.strip(), clean_phone,
                         str(move_date), "CONFIRMED"
                     ])
-
-                    # UPDATE BEDS
-                    all_rows = sheet.get_all_records()
-                    headers = [h.strip().lower() for h in sheet.row_values(1)]
-                    bed_col_index = headers.index("available_beds") + 1
-
-                    for i, row_data in enumerate(all_rows, start=2):
-                        if (
-                            str(row_data["pg_id"]) == str(r["pg_id"]) and
-                            str(row_data["room_no"]) == str(selected_room)
-                        ):
-                            current_beds = int(row_data["available_beds"])
-                            if current_beds > 0:
-                                sheet.update_cell(i, bed_col_index, current_beds - 1)
 
                     st.success("🎉 Booking Confirmed!")
                     st.cache_data.clear()
