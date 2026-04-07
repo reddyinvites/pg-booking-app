@@ -8,7 +8,8 @@ st.set_page_config(page_title="PG Match Engine", layout="centered")
 st.title("🏠 PG Match Engine (Smart Recommendation)")
 
 # ---------------- GOOGLE SHEETS ----------------
-PG_APP_ID = "1GbSoVjomgzl52VD8KB2fK1wmQIIYxUlkI4ADgnYYvxw"
+# ✅ FIX: Use SAME sheet for everything
+PG_APP_ID = "1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q"
 
 scope = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -24,14 +25,14 @@ client = gspread.authorize(creds)
 
 # ---------------- SAFE CONNECTION ----------------
 try:
-    sh = client.open_by_key("1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q")
+    sh = client.open_by_key(PG_APP_ID)  # ✅ FIX
     sheet = sh.sheet1
 except:
     st.error("❌ Unable to connect to Google Sheet")
     st.stop()
 
 # ---------------- LOAD DATA ----------------
-@st.cache_data(ttl=0)  # ✅ FIX (removed caching delay)
+@st.cache_data(ttl=0)
 def load_data():
     try:
         df = pd.DataFrame(sheet.get_all_records())
@@ -82,8 +83,6 @@ pref_food = st.selectbox("🍽 Food", ["Veg", "Non Veg", "Both"])
 pref_room_type = st.selectbox("🧊 Room Type", ["AC", "Non AC"])
 
 # ---------------- FILTER ----------------
-# (NO CHANGE – keeping your logic exactly same)
-
 df = df[df["area"] == pref_area]
 df = df[df["locality"] == pref_locality]
 
@@ -143,7 +142,6 @@ for (pg_id, pg_name, location), group in grouped:
         score += 20
         reasons.append("Exact locality match")
 
-    # ✅ FIX (do not hide others)
     if row["sharing_type"] == pref_sharing:
         score += 10
         reasons.append("Sharing matched")
@@ -302,7 +300,7 @@ for r in results[:3]:
                                 if current_beds > 0:
                                     sheet.update_cell(i, bed_col_index, current_beds - 1)
 
-                        st.cache_data.clear()  # ✅ FIX
+                        st.cache_data.clear()
                         st.success("🎉 Booking Confirmed!")
                         st.rerun()
 
