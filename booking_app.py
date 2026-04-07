@@ -8,7 +8,6 @@ st.set_page_config(page_title="PG Match Engine", layout="centered")
 st.title("🏠 PG Match Engine (Smart Recommendation)")
 
 # ---------------- GOOGLE SHEETS ----------------
-# ✅ FIX: Use SAME sheet for everything
 PG_APP_ID = "1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q"
 
 scope = [
@@ -25,7 +24,7 @@ client = gspread.authorize(creds)
 
 # ---------------- SAFE CONNECTION ----------------
 try:
-    sh = client.open_by_key(PG_APP_ID)  # ✅ FIX
+    sh = client.open_by_key(PG_APP_ID)
     sheet = sh.sheet1
 except:
     st.error("❌ Unable to connect to Google Sheet")
@@ -198,7 +197,7 @@ for (pg_id, pg_name, location), group in grouped:
         "pg": pg_name,
         "location": location,
         "price": price,
-        "beds": int(group["available_beds"].sum()),
+        "beds": int(group["available_beds"].sum()),  # ✅ FIX TOTAL BEDS
         "score": score,
         "reasons": reasons,
         "cons": cons,
@@ -231,23 +230,25 @@ for r in results[:3]:
     st.write(f"🛏 {r['beds']} Beds Available")
 
     room_df = df[
-    (df["pg_id"] == r["pg_id"]) &
-    (df["location"] == r["location"]) &
-    (df["available_beds"] > 0)
-]
+        (df["pg_id"] == r["pg_id"]) &
+        (df["location"] == r["location"]) &
+        (df["available_beds"] > 0)
+    ]
 
-room_df = room_df[room_df["sharing_type"] == pref_sharing]
+    # ✅ FILTER BY SHARING
+    room_df = room_df[room_df["sharing_type"] == pref_sharing]
 
-if room_df.empty:
-    st.error(f"❌ {pref_sharing} not available in this PG")
-else:
-    room_list = room_df["room_no"].astype(str).unique().tolist()
+    if room_df.empty:
+        st.error(f"❌ {pref_sharing} not available in this PG")
+    else:
 
-    selected_room = st.selectbox(
-        f"🛏 Select Room - {r['pg']}",
-        room_list,
-        key=f"room_{r['pg_id']}"
-    )
+        room_list = room_df["room_no"].astype(str).unique().tolist()
+
+        selected_room = st.selectbox(
+            f"🛏 Select Room - {r['pg']}",
+            room_list,
+            key=f"room_{r['pg_id']}"
+        )
 
         selected_room_data = room_df[
             room_df["room_no"].astype(str) == selected_room
@@ -309,9 +310,6 @@ else:
 
                     except Exception as e:
                         st.error(f"Error: {e}")
-
-    else:
-        st.warning("No rooms available ❌")
 
     st.markdown("### 😣 PG Condition Score")
     st.write(f"⭐ {r['pain']} / 5")
