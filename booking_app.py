@@ -9,52 +9,66 @@ st.title("🏠 PG Match Engine (Smart Recommendation)")
 
 # ---------------- GOOGLE SHEETS ----------------
 PG_APP_ID = "1GbSoVjomgzl52VD8KB2fK1wmQIIYxUlkI4ADgnYYvxw"
+MAIN_SHEET_ID = "1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q"
 
 scope = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
 
-creds = Credentials.from_service_account_info(
-    st.secrets["gcp"],
-    scopes=scope
-)
+# ✅ SAFE SECRETS LOAD
+if "gcp" not in st.secrets:
+    st.error("❌ GCP secrets not found")
+    st.stop()
 
-client = gspread.authorize(creds)
-
-# ---------------- CONNECT BOTH SHEETS ----------------
 try:
-    sh = client.open_by_key("1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q")
+    creds = Credentials.from_service_account_info(
+        st.secrets["gcp"],
+        scopes=scope
+    )
+    client = gspread.authorize(creds)
+except Exception as e:
+    st.error(f"❌ Auth Error: {e}")
+    st.stop()
 
+# ---------------- CONNECT SHEETS ----------------
+try:
+    sh = client.open_by_key(MAIN_SHEET_ID)
     sheet_pg = sh.sheet1
     sheet_rooms = sh.worksheet("rooms")
 
-except:
-    st.error("❌ Unable to connect to Google Sheet")
+except Exception as e:
+    st.error(f"❌ Sheet Connection Error: {e}")
     st.stop()
 
 # ---------------- LOAD DATA ----------------
-@st.cache_data(ttl=20)
+@st.cache_data(ttl=30)
 def load_data():
     try:
         df_pg = pd.DataFrame(sheet_pg.get_all_records())
         df_rooms = pd.DataFrame(sheet_rooms.get_all_records())
 
-        if not df_pg.empty:
-            df_pg.columns = df_pg.columns.str.lower().str.strip()
+        if df_pg.empty or df_rooms.empty:
+            return pd.DataFrame()
 
-        if not df_rooms.empty:
-            df_rooms.columns = df_rooms.columns.str.lower().str.strip()
+        df_pg.columns = df_pg.columns.str.lower().str.strip()
+        df_rooms.columns = df_rooms.columns.str.lower().str.strip()
 
-        # FIX sharing format
-        df_rooms["sharing_type"] = (
-            df_rooms["sharing_type"]
-            .astype(str)
-            .str.replace("Sharing", "")
-            .str.strip()
-        )
+        # Ensure required columns exist
+        required_cols = ["pg_id", "pg_name"]
+        for col in required_cols:
+            if col not in df_pg.columns or col not in df_rooms.columns:
+                return pd.DataFrame()
 
-        # MERGE BOTH
+        # Clean sharing
+        if "sharing_type" in df_rooms.columns:
+            df_rooms["sharing_type"] = (
+                df_rooms["sharing_type"]
+                .astype(str)
+                .str.replace("Sharing", "", regex=False)
+                .str.strip()
+            )
+
         df = pd.merge(
             df_rooms,
             df_pg,
@@ -65,7 +79,7 @@ def load_data():
         return df
 
     except Exception as e:
-        st.error(e)
+        st.error(f"❌ Data Load Error: {e}")
         return pd.DataFrame()
 
 df = load_data()
@@ -75,7 +89,7 @@ if df.empty:
     st.stop()
 
 # ---------------- CLEAN ----------------
-df = df[df["available_beds"] > 0]
+df = df[df.get("available_beds", 0) > 0]
 
 location_split = df["location"].astype(str).str.split("-", n=1, expand=True)
 df["area"] = location_split[0].fillna("").str.strip()
@@ -122,11 +136,10 @@ for (pg_id, pg_name, location), group in grouped:
 
     row = group.iloc[0]
 
-    price_str = str(row["price"]).replace("₹", "").replace(",", "").strip()
-    if not price_str.isdigit():
+    try:
+        price = int(str(row["price"]).replace("₹", "").replace(",", "").strip())
+    except:
         continue
-
-    price = int(price_str)
 
     score = 0
 
@@ -139,7 +152,7 @@ for (pg_id, pg_name, location), group in grouped:
     else:
         continue
 
-    if str(row["sharing_type"]) == pref_sharing.split()[0]:
+    if str(row.get("sharing_type", "")) == pref_sharing.split()[0]:
         score += 10
 
     results.append({
@@ -163,7 +176,6 @@ for r in results[:3]:
     st.write(f"💰 ₹{r['price']}")
     st.write(f"🛏 {r['beds']} Beds Available")
 
-    # ROOM FILTER
     room_df = df[
         (df["pg_id"] == r["pg_id"]) &
         (df["location"] == r["location"]) &
@@ -172,7 +184,7 @@ for r in results[:3]:
     ]
 
     if room_df.empty:
-        st.warning("No rooms available for selected sharing ❌")
+        st.warning("No rooms available ❌")
         continue
 
     room_list = room_df["room_no"].astype(str).unique().tolist()
@@ -188,9 +200,9 @@ for r in results[:3]:
     ]
 
     beds_left = int(selected_room_data["available_beds"].values[0])
-    st.info(f"🛏 Available Beds in Room {selected_room}: {beds_left}")
+    st.info(f"🛏 Beds left: {beds_left}")
 
-    # BOOKING
+    # ---------------- BOOKING ----------------
     with st.form(f"book_form_{r['pg_id']}"):
 
         name = st.text_input("👤 Your Name")
@@ -200,15 +212,21 @@ for r in results[:3]:
         submit = st.form_submit_button("🚀 Confirm Booking")
 
         if submit:
+
+            if not (phone.isdigit() and len(phone) == 10):
+                st.error("Invalid phone number ❌")
+                st.stop()
+
             try:
                 booking_sheet = client.open_by_key(PG_APP_ID).worksheet("Bookings")
 
                 booking_sheet.append_row([
-                    r["pg_id"], r["pg"], selected_room, r["location"],
-                    r["price"], name, phone, str(move_date), "CONFIRMED"
+                    r["pg_id"], r["pg"], selected_room,
+                    r["location"], r["price"],
+                    name, phone, str(move_date), "CONFIRMED"
                 ])
 
-                # UPDATE BEDS IN ROOMS SHEET
+                # UPDATE BEDS
                 all_rows = sheet_rooms.get_all_records()
                 headers = [h.strip().lower() for h in sheet_rooms.row_values(1)]
                 bed_col_index = headers.index("available_beds") + 1
@@ -227,6 +245,6 @@ for r in results[:3]:
                 st.rerun()
 
             except Exception as e:
-                st.error(e)
+                st.error(f"Booking Error: {e}")
 
     st.divider()
