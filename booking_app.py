@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
-import random
 
 st.set_page_config(page_title="PG Match Engine", layout="centered")
 st.title("🏠 PG Match Engine (Smart Recommendation)")
@@ -16,11 +15,7 @@ scope = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-# ✅ SAFE SECRETS LOAD
-if "gcp" not in st.secrets:
-    st.error("❌ GCP secrets not found")
-    st.stop()
-
+# ---------------- AUTH ----------------
 try:
     creds = Credentials.from_service_account_info(
         st.secrets["gcp"],
@@ -31,55 +26,28 @@ except Exception as e:
     st.error(f"❌ Auth Error: {e}")
     st.stop()
 
-# ---------------- CONNECT SHEETS ----------------
+# ---------------- CONNECT ----------------
 try:
     sh = client.open_by_key(MAIN_SHEET_ID)
-    sheet_pg = sh.sheet1
-    sheet_rooms = sh.worksheet("rooms")
-
+    sheet_pg = sh.sheet1  # ONLY PG DATA
 except Exception as e:
-    st.error(f"❌ Sheet Connection Error: {e}")
+    st.error(f"❌ Sheet Error: {e}")
     st.stop()
 
 # ---------------- LOAD DATA ----------------
 @st.cache_data(ttl=30)
 def load_data():
     try:
-        df_pg = pd.DataFrame(sheet_pg.get_all_records())
-        df_rooms = pd.DataFrame(sheet_rooms.get_all_records())
+        df = pd.DataFrame(sheet_pg.get_all_records())
 
-        if df_pg.empty or df_rooms.empty:
+        if df.empty:
             return pd.DataFrame()
 
-        df_pg.columns = df_pg.columns.str.lower().str.strip()
-        df_rooms.columns = df_rooms.columns.str.lower().str.strip()
-
-        # Ensure required columns exist
-        required_cols = ["pg_id", "pg_name"]
-        for col in required_cols:
-            if col not in df_pg.columns or col not in df_rooms.columns:
-                return pd.DataFrame()
-
-        # Clean sharing
-        if "sharing_type" in df_rooms.columns:
-            df_rooms["sharing_type"] = (
-                df_rooms["sharing_type"]
-                .astype(str)
-                .str.replace("Sharing", "", regex=False)
-                .str.strip()
-            )
-
-        df = pd.merge(
-            df_rooms,
-            df_pg,
-            on=["pg_id", "pg_name"],
-            how="left"
-        )
-
+        df.columns = df.columns.str.lower().str.strip()
         return df
 
     except Exception as e:
-        st.error(f"❌ Data Load Error: {e}")
+        st.error(f"❌ Data Error: {e}")
         return pd.DataFrame()
 
 df = load_data()
@@ -107,7 +75,7 @@ if search:
         df["locality"].str.lower().str.contains(s, na=False)
     ]
 
-# ---------------- DROPDOWNS ----------------
+# ---------------- FILTERS ----------------
 all_areas = sorted(df["area"].dropna().unique())
 all_localities = sorted(df["locality"].dropna().unique())
 
@@ -121,20 +89,13 @@ pref_sharing = st.selectbox(
     ["1 Sharing", "2 Sharing", "3 Sharing", "4 Sharing"]
 )
 
-pref_gender = st.selectbox("👤 Gender", ["Male", "Female", "Co-Living"])
-pref_food = st.selectbox("🍽 Food", ["Veg", "Non Veg", "Both"])
-pref_room_type = st.selectbox("🧊 Room Type", ["AC", "Non AC"])
-
 # ---------------- FILTER ----------------
 df = df[(df["area"] == pref_area) & (df["locality"] == pref_locality)]
 
 # ---------------- SCORING ----------------
 results = []
-grouped = df.groupby(["pg_id", "pg_name", "location"])
 
-for (pg_id, pg_name, location), group in grouped:
-
-    row = group.iloc[0]
+for _, row in df.iterrows():
 
     try:
         price = int(str(row["price"]).replace("₹", "").replace(",", "").strip())
@@ -156,11 +117,11 @@ for (pg_id, pg_name, location), group in grouped:
         score += 10
 
     results.append({
-        "pg_id": pg_id,
-        "pg": pg_name,
-        "location": location,
+        "pg_id": row.get("pg_id"),
+        "pg": row.get("pg_name"),
+        "location": row.get("location"),
         "price": price,
-        "beds": int(group["available_beds"].sum()),
+        "beds": row.get("available_beds", 0),
         "score": score
     })
 
@@ -173,34 +134,9 @@ st.subheader("🏆 Best PGs For You")
 for r in results[:3]:
 
     st.markdown(f"## 🏠 {r['pg']} — {r['score']}% Match")
+    st.write(f"📍 {r['location']}")
     st.write(f"💰 ₹{r['price']}")
-    st.write(f"🛏 {r['beds']} Beds Available")
-
-    room_df = df[
-        (df["pg_id"] == r["pg_id"]) &
-        (df["location"] == r["location"]) &
-        (df["available_beds"] > 0) &
-        (df["sharing_type"] == pref_sharing.split()[0])
-    ]
-
-    if room_df.empty:
-        st.warning("No rooms available ❌")
-        continue
-
-    room_list = room_df["room_no"].astype(str).unique().tolist()
-
-    selected_room = st.selectbox(
-        f"🛏 Select Room - {r['pg']}",
-        room_list,
-        key=f"room_{r['pg_id']}"
-    )
-
-    selected_room_data = room_df[
-        room_df["room_no"].astype(str) == selected_room
-    ]
-
-    beds_left = int(selected_room_data["available_beds"].values[0])
-    st.info(f"🛏 Beds left: {beds_left}")
+    st.write(f"🛏 Beds Available: {r['beds']}")
 
     # ---------------- BOOKING ----------------
     with st.form(f"book_form_{r['pg_id']}"):
@@ -221,24 +157,10 @@ for r in results[:3]:
                 booking_sheet = client.open_by_key(PG_APP_ID).worksheet("Bookings")
 
                 booking_sheet.append_row([
-                    r["pg_id"], r["pg"], selected_room,
+                    r["pg_id"], r["pg"],
                     r["location"], r["price"],
                     name, phone, str(move_date), "CONFIRMED"
                 ])
-
-                # UPDATE BEDS
-                all_rows = sheet_rooms.get_all_records()
-                headers = [h.strip().lower() for h in sheet_rooms.row_values(1)]
-                bed_col_index = headers.index("available_beds") + 1
-
-                for i, row_data in enumerate(all_rows, start=2):
-                    if (
-                        str(row_data["pg_id"]) == str(r["pg_id"]) and
-                        str(row_data["room_no"]) == str(selected_room)
-                    ):
-                        current_beds = int(row_data["available_beds"])
-                        if current_beds > 0:
-                            sheet_rooms.update_cell(i, bed_col_index, current_beds - 1)
 
                 st.success("🎉 Booking Confirmed!")
                 st.cache_data.clear()
