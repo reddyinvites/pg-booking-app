@@ -24,7 +24,7 @@ client = gspread.authorize(creds)
 # ---------------- CONNECT ----------------
 try:
     sh = client.open_by_key("1y60dTYBKgkOi7J37jtGK4BkkmUoZF8yD4P5J3xA5q6Q")
-    sheet = sh.worksheet("rooms")
+    sheet = sh.sheet1   # ✅ NO ROOMS
 except Exception as e:
     st.error(f"❌ {e}")
     st.stop()
@@ -47,7 +47,7 @@ def load_data():
 df = load_data()
 df = df[df["available_beds"] > 0]
 
-# ---------------- LOCATION SPLIT ----------------
+# ---------------- LOCATION ----------------
 loc = df["location"].astype(str).str.split("-", n=1, expand=True)
 df["area"] = loc[0].fillna("").str.strip()
 df["locality"] = loc[1].fillna("").str.strip()
@@ -69,7 +69,7 @@ pref_room_type = st.selectbox("🧊 Room Type", ["AC","Non AC"])
 # ---------------- FILTER ----------------
 df = df[(df["area"] == pref_area) & (df["locality"] == pref_locality)]
 
-# STRICT SHARING FILTER
+# STRICT SHARING
 df = df[df["sharing_type"] == pref_sharing.split()[0]]
 
 # ---------------- SAFE FLOAT ----------------
@@ -152,59 +152,57 @@ st.subheader("🏆 Best PGs For You")
 
 for i,r in enumerate(results[:3]):
 
-    with st.container():
-        st.markdown(f"## 🏠 {r['pg']} — {r['score']}% Match")
+    st.markdown(f"## 🏠 {r['pg']} — {r['score']}% Match")
 
-        # PRICE STYLE
-        if r["price"] == pref_budget:
-            st.success(f"💰 ₹{r['price']} (Perfect match 🔥)")
-        else:
-            st.info(f"💰 ₹{r['price']}")
+    if r["price"] == pref_budget:
+        st.success(f"💰 ₹{r['price']} (Perfect match 🔥)")
+    else:
+        st.info(f"💰 ₹{r['price']}")
 
-        st.write(f"🛏 {r['beds']} Beds Available")
+    st.write(f"🛏 {r['beds']} Beds Available")
 
-        # WHY
-        st.markdown("### ✅ Why this PG?")
-        for x in r["reasons"]:
-            st.write(f"✔️ {x}")
+    # WHY
+    st.markdown("### ✅ Why this PG?")
+    for x in r["reasons"]:
+        st.write(f"✔️ {x}")
 
-        # CONS
-        if r["cons"]:
-            st.markdown("### ⚠️ Things to consider")
-            for c in r["cons"]:
-                st.write(f"⚠️ {c}")
+    # CONS
+    if r["cons"]:
+        st.markdown("### ⚠️ Things to consider")
+        for c in r["cons"]:
+            st.write(f"⚠️ {c}")
 
-        # RATINGS
-        st.markdown("### ⭐ Ratings")
-        st.write(f"🍛 Food: {r['food']}/5")
-        st.write(f"🧹 Clean: {r['clean']}/5")
-        st.write(f"🛡 Safety: {r['safety']}/5")
-        st.write(f"🔧 Maintenance: {r['maint']}/5")
+    # RATINGS
+    st.markdown("### ⭐ Ratings")
+    st.write(f"🍛 Food: {r['food']}/5")
+    st.write(f"🧹 Clean: {r['clean']}/5")
+    st.write(f"🛡 Safety: {r['safety']}/5")
+    st.write(f"🔧 Maintenance: {r['maint']}/5")
 
-        st.progress(r["rating"]/5)
-        st.caption(f"Overall Score: {r['rating']}/5")
+    st.progress(r["rating"]/5)
+    st.caption(f"Overall Score: {r['rating']}/5")
 
-        # BOOKING
-        with st.form(f"book_{i}"):
+    # BOOKING
+    with st.form(f"book_{i}"):
 
-            name = st.text_input("👤 Name")
-            phone = st.text_input("📞 Phone")
-            date = st.date_input("📅 Move Date")
+        name = st.text_input("👤 Name")
+        phone = st.text_input("📞 Phone")
+        date = st.date_input("📅 Move Date")
 
-            if st.form_submit_button("🚀 Book Now"):
+        if st.form_submit_button("🚀 Book Now"):
 
-                phone = phone.replace("+91","").strip()
+            phone = phone.replace("+91","").strip()
 
-                if not(phone.isdigit() and len(phone)==10):
-                    st.error("Invalid phone ❌")
-                else:
-                    sheet_b = client.open_by_key(PG_APP_ID).worksheet("Bookings")
-                    sheet_b.append_row([
-                        r["id"],r["pg"],r["loc"],r["price"],
-                        name,phone,str(date),"CONFIRMED"
-                    ])
+            if not(phone.isdigit() and len(phone)==10):
+                st.error("Invalid phone ❌")
+            else:
+                sheet_b = client.open_by_key(PG_APP_ID).worksheet("Bookings")
+                sheet_b.append_row([
+                    r["id"],r["pg"],r["loc"],r["price"],
+                    name,phone,str(date),"CONFIRMED"
+                ])
 
-                    st.success("🎉 Booked!")
-                    st.rerun()
+                st.success("🎉 Booked!")
+                st.rerun()
 
-        st.divider()
+    st.divider()
