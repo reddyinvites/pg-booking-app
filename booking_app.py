@@ -31,7 +31,7 @@ except:
     st.stop()
 
 # ---------------- LOAD DATA ----------------
-@st.cache_data(ttl=20)
+@st.cache_data(ttl=0)  # ✅ FIX (removed caching delay)
 def load_data():
     try:
         df = pd.DataFrame(sheet.get_all_records())
@@ -82,6 +82,8 @@ pref_food = st.selectbox("🍽 Food", ["Veg", "Non Veg", "Both"])
 pref_room_type = st.selectbox("🧊 Room Type", ["AC", "Non AC"])
 
 # ---------------- FILTER ----------------
+# (NO CHANGE – keeping your logic exactly same)
+
 df = df[df["area"] == pref_area]
 df = df[df["locality"] == pref_locality]
 
@@ -141,9 +143,13 @@ for (pg_id, pg_name, location), group in grouped:
         score += 20
         reasons.append("Exact locality match")
 
+    # ✅ FIX (do not hide others)
     if row["sharing_type"] == pref_sharing:
         score += 10
         reasons.append("Sharing matched")
+    else:
+        score += 2
+        cons.append("Different sharing than your preference")
 
     if str(row.get("gender","")).lower() == pref_gender.lower():
         score += 5
@@ -177,9 +183,6 @@ for (pg_id, pg_name, location), group in grouped:
 
     if price > pref_budget:
         cons.append(f"₹{price - pref_budget} above your budget")
-
-    if row["sharing_type"] != pref_sharing:
-        cons.append("Different sharing than your preference")
 
     if str(row.get("room_type","")).lower() != pref_room_type.lower():
         cons.append("Room type not matching")
@@ -299,10 +302,8 @@ for r in results[:3]:
                                 if current_beds > 0:
                                     sheet.update_cell(i, bed_col_index, current_beds - 1)
 
+                        st.cache_data.clear()  # ✅ FIX
                         st.success("🎉 Booking Confirmed!")
-                        st.balloons()
-
-                        st.cache_data.clear()
                         st.rerun()
 
                     except Exception as e:
